@@ -1,0 +1,7 @@
+{"kind":"limit","orderId":"old-high","side":"sell","priceTicks":110,"quantity":2}
+{"kind":"limit","orderId":"first","side":"sell","priceTicks":100,"quantity":3}
+{"kind":"limit","orderId":"second","side":"sell","priceTicks":100,"quantity":4}
+{"kind":"limit","orderId":"buyer","side":"buy","priceTicks":120,"quantity":5}
+{"kind":"cancel","orderId":"second"}
+{"kind":"cancel","orderId":"buyer"}
+{"kind":"limit","orderId":"first","side":"buy","priceTicks":1,"quantity":1}

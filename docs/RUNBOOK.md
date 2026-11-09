@@ -1,0 +1,13 @@
+# User and reviewer runbook
+
+Run `matching help`, then the seven-command priority example and independent oracle from README. Output directories must be new. Expected example: five accepted, two rejected, two ordered trades (first maker, then second maker, both at resting price 100); remaining second-maker quantity is cancelled. Cancel-after-fill and reuse of the first maker ID reject without effects.
+
+`python tools/native_demo.py --cli PATH_TO_NATIVE_APP --out NEW_DIR` executes four histories: the example and 600 commands each for seeds 11, 7021, 20261109. Each runs scan baseline, indexed implementation and indexed replay: 12 native runs, 1,807 commands per implementation. Every command is checked by Python; exact event/final bytes must match across representations and replay. It also denies twelve malformed/bounded files and falsifies the oracle with eight corruptions: price, maker, trade order, trade ID, quantity, state hash, missing event and final conservation counter. A green receipt means these bounded correctness cases passed, not arbitrary input correctness.
+
+Source tests include both representations at reduced capacity, the exact default indexed 10,000 resting boundary, lifetime identity exhaustion, a fill at full capacity, cancel-after-fill, duplicate reuse, all Int64 cumulative and sequence exhaustion cases, immutable snapshots, culture independence and strict JSON. Internal overflow fixtures deliberately seed counters without claiming a valid recovered book. Do not expose them as a recovery API.
+
+On failure, preserve input, exact app source version, logs and incomplete output. Do not rename incomplete output into a successful receipt or retry with changed order/limits while claiming the same run. Use a fresh directory for a corrected run. A process stop loses the in-memory book; start a fresh process and replay the original ordered file. No actual order was sent and no account/market connection exists.
+
+Bounded local profile needs the native x64 OS and Python 3.12+ for the verifier; source build additionally needs pinned .NET SDK and public NuGet access. No server, container, OS feature or global package is installed by the demo. Output and input bounds are in CONTRACT; the per-command digest is intentionally expensive and no SLA or latency distribution is inferred. Public CI after approval builds natively on both Windows and Ubuntu; local cross-build plus native execution is reported separately.
+
+Review tasks can be separated: (1) inspect plan-before-mutate and the capacity/overflow counterexamples; (2) inspect whether the Python model and corruption regressions independently enforce price/FIFO/conservation. This is a review handoff, not a claim of actual reviewers or management history.

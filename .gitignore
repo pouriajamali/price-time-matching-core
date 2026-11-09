@@ -1,0 +1,9 @@
+**/bin/
+**/obj/
+artifacts/
+BenchmarkDotNet.Artifacts/
+__pycache__/
+*.pyc
+*.private.json
+*.nettrace
+*.speedscope.json
