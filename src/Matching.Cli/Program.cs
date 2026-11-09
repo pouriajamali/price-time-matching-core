@@ -18,7 +18,15 @@ try
     }
     if(bytes.AsSpan().StartsWith(new byte[]{239,187,191}))throw new ArgumentException("BOM");
     var text=new UTF8Encoding(false,true).GetString(bytes);var lines=text.Split('\n');var count=lines.Length-(lines[^1]==""?1:0);if(count is <1 or >20000)throw new ArgumentException("Command count");
-    var commands=new Command[count];for(int i=0;i<count;i++){var line=lines[i].EndsWith('\r')?lines[i][..^1]:lines[i];if(line.Length==0 || line.Contains('\r') || Encoding.UTF8.GetByteCount(line)>4096)throw new ArgumentException("Frame cap or framing");commands[i]=JsonSerializer.Deserialize<Command>(line,Wire.Options)??throw new ArgumentException("Null command");}
+    var commands=new Command[count];for(int i=0;i<count;i++)
+    {
+        // CR is a delimiter only when this row was actually terminated by LF.
+        // At EOF it remains a forbidden bare CR, even though JSON permits CR whitespace.
+        bool terminatedByLf=i<lines.Length-1;
+        var line=terminatedByLf && lines[i].EndsWith('\r')?lines[i][..^1]:lines[i];
+        if(line.Length==0 || line.Contains('\r') || Encoding.UTF8.GetByteCount(line)>4096)throw new ArgumentException("Frame cap or framing");
+        commands[i]=JsonSerializer.Deserialize<Command>(line,Wire.Options)??throw new ArgumentException("Null command");
+    }
     IMatcher engine=args.Length==4 && args[3]=="scan"?new ScanMatcher():new IndexedMatcher();Directory.CreateDirectory(destination);var timer=Stopwatch.StartNew();long rawBytes=0;var raw=Path.Combine(destination,"events.incomplete.jsonl");
     using(var output=new FileStream(raw,FileMode.CreateNew,FileAccess.Write,FileShare.Read))
     {

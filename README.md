@@ -13,11 +13,13 @@ The interesting decision is explicit: accepted command sequence defines FIFO. A 
 | Capacity and checked arithmetic reject before effects | Prospective-capacity tests, full 10,000 boundary and overflow counterexamples in `MatcherTests.cs` |
 | Each accepted order conserves quantity | Per-command ledger hashes and full final ledger checked by a differently structured Python model |
 | After stopping, rebuild from original ordered input | Demo runs indexed replay twice and compares exact events/final bytes with the scan baseline; there is no durable book recovery claim |
-| Invalid JSON anywhere prevents all processing | Twelve hostile-file cases, including a malformed later row, duplicate keys, invalid UTF-8 and numeric strings |
+| Invalid JSON or framing anywhere prevents all processing | Twelve hostile-file cases plus 16 byte-framing regressions, including terminal bare CR, multiple rows, exact 4,096-byte boundaries and valid LF/CRLF/final EOF controls |
 
 ## Start with the demo
 
-This is a **local release candidate awaiting the five-project coordinator review**. No public download is claimed yet. Candidate Windows x64 ZIP and Linux x64 tar.gz contain the self-contained runtime, examples, Python verifier and full notices. Python 3.12+ is needed for independent evidence, not for the CLI itself.
+Preview version: `0.1.0-preview.1`. Use the [release channel](https://github.com/pouriajamali/price-time-matching-core/releases) for published Windows x64, Linux x64 and source archives, checksums and signatures. Verify downloaded bytes with [PROVENANCE.md](PROVENANCE.md) before executing them. Local builds and CI artifacts are separate from published releases.
+
+Windows x64 ZIP and Linux x64 tar.gz contain the self-contained runtime, examples, Python verifier and full notices. Python 3.12+ is needed for independent evidence, not for the CLI itself.
 
 Windows PowerShell, from the extracted directory:
 
@@ -36,7 +38,7 @@ python3 tools/oracle.py --input examples/priority.jsonl --output my-first-replay
 python3 tools/native_demo.py --cli ./matching --out complete-native-demo
 ```
 
-Choose a **new output directory** each time. CLI `COMPLETE_NOT_INDEPENDENT_PROOF` means bounded processing completed; the oracle must separately pass. The native demo checks four histories, 1,807 commands per implementation, 12 runs, 12 hostile inputs and eight deliberate output corruptions. Runtime limits can stop a larger replay; incomplete files are never a passing receipt.
+Choose a **new output directory** each time. CLI `COMPLETE_NOT_INDEPENDENT_PROOF` means bounded processing completed; the oracle must separately pass. The native demo checks four histories, 1,807 commands per implementation, 12 runs, 12 hostile inputs, 16 byte-framing regressions and eight deliberate output corruptions. Runtime limits can stop a larger replay; incomplete files are never a passing receipt.
 
 ## Input and output
 

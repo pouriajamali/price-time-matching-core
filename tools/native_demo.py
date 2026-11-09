@@ -29,6 +29,8 @@ def main():
     hostile={'duplicate':b'{"kind":"cancel","orderId":"a","orderId":"b"}\n','missing':b'{}\n','unknown':b'{"kind":"cancel","orderId":"a","live":true}\n','null':b'{"kind":"cancel","orderId":null}\n','blank':b'\n','bare-cr':b'{"kind":"cancel",\r"orderId":"a"}\n','invalid-utf8':b'\xff\n','oversized-frame':b' '*4097+b'\n','oversized-file':b' '* (8*1024*1024+1),'late-malformed':b'{"kind":"cancel","orderId":"a"}\n{\n','bom':b'\xef\xbb\xbf{}\n','number-string':b'{"kind":"limit","orderId":"a","side":"buy","priceTicks":"1","quantity":1}\n'}
     for name,value in hostile.items():
         file=out/('deny-'+name+'.jsonl');file.write_bytes(value);target=out/('deny-'+name);call('run',file,target,expected=2);require(not target.exists(),'Full frame preflight before engine/output creation')
+    subprocess.run([sys.executable,str(Path(__file__).with_name('test_framing.py')),'--cli',str(cli),'--out',str(out/'framing')],check=True,timeout=120)
+    framing=json.loads((out/'framing/receipt.json').read_text());require(framing['status']=='PASS' and framing['tests']==16 and framing['failed']==0,'Native byte framing')
     # Oracle falsification: each mutation must fail independently.
     original=out/'priority-indexed';input_file=out/'priority.jsonl';negative=[]
     for mode in ['trade-price','trade-maker','trade-order','trade-id','trade-quantity','state-hash','missing-event','final-conservation']:
@@ -46,6 +48,6 @@ def main():
         try:oracle.verify(input_file,target)
         except ValueError:negative.append(mode)
         else:raise ValueError('Oracle accepted corruption '+mode)
-    receipt=dict(status='PASS_CORRECTNESS_NOT_A_SPEED_CLAIM',os=platform.system(),sourceVersion=source,histories=len(histories),nativeRuns=run_count,commandsPerImplementation=sum(len(c) for _,c in histories),results=results,hostileFrames=len(hostile),oracleRegressions=len(negative),boundary='Native CLI with full per-command ledger hashes; two C# representations and independent Python scan model. No latency benchmark, network, persistent book or venue claim.')
+    receipt=dict(status='PASS_CORRECTNESS_NOT_A_SPEED_CLAIM',os=platform.system(),sourceVersion=source,histories=len(histories),nativeRuns=run_count,commandsPerImplementation=sum(len(c) for _,c in histories),results=results,hostileFrames=len(hostile),byteFramingRegressions=framing['tests'],oracleRegressions=len(negative),boundary='Native CLI with full per-command ledger hashes; two C# representations and independent Python scan model. No latency benchmark, network, persistent book or venue claim.')
     (out/'receipt.json').write_text(json.dumps(receipt,indent=2)+'\n');print(json.dumps(receipt))
 if __name__=='__main__':main()

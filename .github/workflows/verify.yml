@@ -133,4 +133,4 @@ jobs:
           ACTUAL_TAG: ${{ github.ref_name }}
         run: |
           test "$ACTUAL_TAG" = "$RELEASE_TAG"
-          gh release create "$RELEASE_TAG" artifacts/release/* --verify-tag --prerelease --title "$RELEASE_TAG â€” Price-Time Matching Core" --notes-file docs/RELEASE.md
+          gh release create "$RELEASE_TAG" artifacts/release/* --verify-tag --prerelease --title "$RELEASE_TAG - Price-Time Matching Core" --notes-file docs/RELEASE.md

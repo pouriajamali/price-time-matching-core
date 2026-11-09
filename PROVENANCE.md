@@ -2,7 +2,7 @@
 
 Expected SSH signing fingerprint: `SHA256:AgU5bZlJSjUu0KsWMmVEEr+BfXpcMVNroTA33bHcQdU`.
 
-Before a future public release, compare this pin with a trusted channel. Download the chosen archive plus SHA256SUMS.txt, SHA256SUMS.txt.sig and SIGNING-PUBLIC-KEY.pub into one directory. From a trusted checkout, run:
+Before executing a downloaded release, compare this pin with a trusted channel. Download the chosen archive plus SHA256SUMS.txt, SHA256SUMS.txt.sig and SIGNING-PUBLIC-KEY.pub into one directory. From a trusted checkout, run:
 
 ```sh
 python tools/verify_downloads.py --directory DOWNLOAD_DIR --work NEW_VERIFY_DIR --trusted-fingerprint SHA256:AgU5bZlJSjUu0KsWMmVEEr+BfXpcMVNroTA33bHcQdU --archive EXACT_ARCHIVE_NAME
