@@ -78,3 +78,5 @@ dotnet run --project tests/Matching.Tests/Matching.Tests.csproj -c Release --no-
 ```
 
 See [contract](docs/CONTRACT.md), [decisions](docs/ADR.md), [runbook](docs/RUNBOOK.md), [release scope](docs/RELEASE.md), [provenance](PROVENANCE.md) and [contributing](CONTRIBUTING.md). MIT covers original code; bundled runtime retains its own full notices.
+
+[CI resource policy](docs/CI-POLICY.md): documentation-only changes get real lightweight document/pipeline checks; source, tag and manual runs retain native validation. Published runtime tags and release assets remain unchanged.
