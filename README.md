@@ -80,3 +80,9 @@ dotnet run --project tests/Matching.Tests/Matching.Tests.csproj -c Release --no-
 See [contract](docs/CONTRACT.md), [decisions](docs/ADR.md), [runbook](docs/RUNBOOK.md), [release scope](docs/RELEASE.md), [provenance](PROVENANCE.md) and [contributing](CONTRIBUTING.md). MIT covers original code; bundled runtime retains its own full notices.
 
 [CI resource policy](docs/CI-POLICY.md): documentation-only changes get real lightweight document/pipeline checks; source, tag and manual runs retain native validation. Published runtime tags and release assets remain unchanged.
+
+## Source readability
+
+The current source expands compact C# layout for review. The published preview links identify its frozen runtime release. Formatting preserves complete syntax, token text and values, comments and directives; it does not introduce a runtime behavior or performance claim.
+
+To reproduce a published package, use its exact original runtime source: [v0.1.0-preview.1 source](https://github.com/pouriajamali/price-time-matching-core/tree/e17d9f9aacdbca9a20d316ae08afb048842a22c6) (`e17d9f9aacdbca9a20d316ae08afb048842a22c6`). Later `main` layout is reviewed separately from those frozen release commits.

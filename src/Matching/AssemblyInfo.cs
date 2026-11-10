@@ -1,2 +1,3 @@
 using System.Runtime.CompilerServices;
-[assembly:InternalsVisibleTo("Matching.Tests")]
+
+[assembly: InternalsVisibleTo("Matching.Tests")]
