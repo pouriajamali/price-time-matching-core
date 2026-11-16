@@ -1,0 +1,3240 @@
+{
+  "schema": "matching-capacity-goldens/v1",
+  "authorship": "Six literal hand-calculated schedules mirrored side/price about100; no matcher/oracle executed to create expected values.",
+  "traces": [
+    {
+      "id": "A-direct",
+      "resting": 1,
+      "lifetimeIds": 8,
+      "steps": [
+        {
+          "command": {
+            "kind": "limit",
+            "orderId": "a",
+            "side": "buy",
+            "priceTicks": 100,
+            "quantity": 2
+          },
+          "result": {
+            "status": "ACCEPTED",
+            "reason": "LIMIT",
+            "acceptedSequence": 1,
+            "trades": []
+          },
+          "snapshot": {
+            "acceptedSequence": 1,
+            "acceptedQuantity": 2,
+            "executedQuantity": 0,
+            "cancelledQuantity": 0,
+            "executedNotional": 0,
+            "orders": [
+              {
+                "orderId": "a",
+                "side": "buy",
+                "priceTicks": 100,
+                "acceptedSequence": 1,
+                "acceptedQuantity": 2,
+                "remainingQuantity": 2,
+                "executedQuantity": 0,
+                "cancelledQuantity": 0
+              }
+            ],
+            "bidPriority": [
+              "a"
+            ],
+            "askPriority": []
+          }
+        },
+        {
+          "command": {
+            "kind": "limit",
+            "orderId": "b",
+            "side": "buy",
+            "priceTicks": 90,
+            "quantity": 1
+          },
+          "result": {
+            "status": "REJECTED",
+            "reason": "RESTING_CAPACITY",
+            "acceptedSequence": 1,
+            "trades": []
+          },
+          "snapshot": {
+            "acceptedSequence": 1,
+            "acceptedQuantity": 2,
+            "executedQuantity": 0,
+            "cancelledQuantity": 0,
+            "executedNotional": 0,
+            "orders": [
+              {
+                "orderId": "a",
+                "side": "buy",
+                "priceTicks": 100,
+                "acceptedSequence": 1,
+                "acceptedQuantity": 2,
+                "remainingQuantity": 2,
+                "executedQuantity": 0,
+                "cancelledQuantity": 0
+              }
+            ],
+            "bidPriority": [
+              "a"
+            ],
+            "askPriority": []
+          }
+        },
+        {
+          "command": {
+            "kind": "cancel",
+            "orderId": "a",
+            "side": null,
+            "priceTicks": null,
+            "quantity": null
+          },
+          "result": {
+            "status": "ACCEPTED",
+            "reason": "CANCEL",
+            "acceptedSequence": 2,
+            "trades": []
+          },
+          "snapshot": {
+            "acceptedSequence": 2,
+            "acceptedQuantity": 2,
+            "executedQuantity": 0,
+            "cancelledQuantity": 2,
+            "executedNotional": 0,
+            "orders": [
+              {
+                "orderId": "a",
+                "side": "buy",
+                "priceTicks": 100,
+                "acceptedSequence": 1,
+                "acceptedQuantity": 2,
+                "remainingQuantity": 0,
+                "executedQuantity": 0,
+                "cancelledQuantity": 2
+              }
+            ],
+            "bidPriority": [],
+            "askPriority": []
+          }
+        },
+        {
+          "command": {
+            "kind": "limit",
+            "orderId": "b",
+            "side": "buy",
+            "priceTicks": 90,
+            "quantity": 1
+          },
+          "result": {
+            "status": "ACCEPTED",
+            "reason": "LIMIT",
+            "acceptedSequence": 3,
+            "trades": []
+          },
+          "snapshot": {
+            "acceptedSequence": 3,
+            "acceptedQuantity": 3,
+            "executedQuantity": 0,
+            "cancelledQuantity": 2,
+            "executedNotional": 0,
+            "orders": [
+              {
+                "orderId": "a",
+                "side": "buy",
+                "priceTicks": 100,
+                "acceptedSequence": 1,
+                "acceptedQuantity": 2,
+                "remainingQuantity": 0,
+                "executedQuantity": 0,
+                "cancelledQuantity": 2
+              },
+              {
+                "orderId": "b",
+                "side": "buy",
+                "priceTicks": 90,
+                "acceptedSequence": 3,
+                "acceptedQuantity": 1,
+                "remainingQuantity": 1,
+                "executedQuantity": 0,
+                "cancelledQuantity": 0
+              }
+            ],
+            "bidPriority": [
+              "b"
+            ],
+            "askPriority": []
+          }
+        }
+      ]
+    },
+    {
+      "id": "A-mirror",
+      "resting": 1,
+      "lifetimeIds": 8,
+      "steps": [
+        {
+          "command": {
+            "kind": "limit",
+            "orderId": "a",
+            "side": "sell",
+            "priceTicks": 100,
+            "quantity": 2
+          },
+          "result": {
+            "status": "ACCEPTED",
+            "reason": "LIMIT",
+            "acceptedSequence": 1,
+            "trades": []
+          },
+          "snapshot": {
+            "acceptedSequence": 1,
+            "acceptedQuantity": 2,
+            "executedQuantity": 0,
+            "cancelledQuantity": 0,
+            "executedNotional": 0,
+            "orders": [
+              {
+                "orderId": "a",
+                "side": "sell",
+                "priceTicks": 100,
+                "acceptedSequence": 1,
+                "acceptedQuantity": 2,
+                "remainingQuantity": 2,
+                "executedQuantity": 0,
+                "cancelledQuantity": 0
+              }
+            ],
+            "bidPriority": [],
+            "askPriority": [
+              "a"
+            ]
+          }
+        },
+        {
+          "command": {
+            "kind": "limit",
+            "orderId": "b",
+            "side": "sell",
+            "priceTicks": 110,
+            "quantity": 1
+          },
+          "result": {
+            "status": "REJECTED",
+            "reason": "RESTING_CAPACITY",
+            "acceptedSequence": 1,
+            "trades": []
+          },
+          "snapshot": {
+            "acceptedSequence": 1,
+            "acceptedQuantity": 2,
+            "executedQuantity": 0,
+            "cancelledQuantity": 0,
+            "executedNotional": 0,
+            "orders": [
+              {
+                "orderId": "a",
+                "side": "sell",
+                "priceTicks": 100,
+                "acceptedSequence": 1,
+                "acceptedQuantity": 2,
+                "remainingQuantity": 2,
+                "executedQuantity": 0,
+                "cancelledQuantity": 0
+              }
+            ],
+            "bidPriority": [],
+            "askPriority": [
+              "a"
+            ]
+          }
+        },
+        {
+          "command": {
+            "kind": "cancel",
+            "orderId": "a",
+            "side": null,
+            "priceTicks": null,
+            "quantity": null
+          },
+          "result": {
+            "status": "ACCEPTED",
+            "reason": "CANCEL",
+            "acceptedSequence": 2,
+            "trades": []
+          },
+          "snapshot": {
+            "acceptedSequence": 2,
+            "acceptedQuantity": 2,
+            "executedQuantity": 0,
+            "cancelledQuantity": 2,
+            "executedNotional": 0,
+            "orders": [
+              {
+                "orderId": "a",
+                "side": "sell",
+                "priceTicks": 100,
+                "acceptedSequence": 1,
+                "acceptedQuantity": 2,
+                "remainingQuantity": 0,
+                "executedQuantity": 0,
+                "cancelledQuantity": 2
+              }
+            ],
+            "bidPriority": [],
+            "askPriority": []
+          }
+        },
+        {
+          "command": {
+            "kind": "limit",
+            "orderId": "b",
+            "side": "sell",
+            "priceTicks": 110,
+            "quantity": 1
+          },
+          "result": {
+            "status": "ACCEPTED",
+            "reason": "LIMIT",
+            "acceptedSequence": 3,
+            "trades": []
+          },
+          "snapshot": {
+            "acceptedSequence": 3,
+            "acceptedQuantity": 3,
+            "executedQuantity": 0,
+            "cancelledQuantity": 2,
+            "executedNotional": 0,
+            "orders": [
+              {
+                "orderId": "a",
+                "side": "sell",
+                "priceTicks": 100,
+                "acceptedSequence": 1,
+                "acceptedQuantity": 2,
+                "remainingQuantity": 0,
+                "executedQuantity": 0,
+                "cancelledQuantity": 2
+              },
+              {
+                "orderId": "b",
+                "side": "sell",
+                "priceTicks": 110,
+                "acceptedSequence": 3,
+                "acceptedQuantity": 1,
+                "remainingQuantity": 1,
+                "executedQuantity": 0,
+                "cancelledQuantity": 0
+              }
+            ],
+            "bidPriority": [],
+            "askPriority": [
+              "b"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "B-direct",
+      "resting": 2,
+      "lifetimeIds": 8,
+      "steps": [
+        {
+          "command": {
+            "kind": "limit",
+            "orderId": "a",
+            "side": "sell",
+            "priceTicks": 100,
+            "quantity": 3
+          },
+          "result": {
+            "status": "ACCEPTED",
+            "reason": "LIMIT",
+            "acceptedSequence": 1,
+            "trades": []
+          },
+          "snapshot": {
+            "acceptedSequence": 1,
+            "acceptedQuantity": 3,
+            "executedQuantity": 0,
+            "cancelledQuantity": 0,
+            "executedNotional": 0,
+            "orders": [
+              {
+                "orderId": "a",
+                "side": "sell",
+                "priceTicks": 100,
+                "acceptedSequence": 1,
+                "acceptedQuantity": 3,
+                "remainingQuantity": 3,
+                "executedQuantity": 0,
+                "cancelledQuantity": 0
+              }
+            ],
+            "bidPriority": [],
+            "askPriority": [
+              "a"
+            ]
+          }
+        },
+        {
+          "command": {
+            "kind": "limit",
+            "orderId": "b",
+            "side": "buy",
+            "priceTicks": 90,
+            "quantity": 2
+          },
+          "result": {
+            "status": "ACCEPTED",
+            "reason": "LIMIT",
+            "acceptedSequence": 2,
+            "trades": []
+          },
+          "snapshot": {
+            "acceptedSequence": 2,
+            "acceptedQuantity": 5,
+            "executedQuantity": 0,
+            "cancelledQuantity": 0,
+            "executedNotional": 0,
+            "orders": [
+              {
+                "orderId": "a",
+                "side": "sell",
+                "priceTicks": 100,
+                "acceptedSequence": 1,
+                "acceptedQuantity": 3,
+                "remainingQuantity": 3,
+                "executedQuantity": 0,
+                "cancelledQuantity": 0
+              },
+              {
+                "orderId": "b",
+                "side": "buy",
+                "priceTicks": 90,
+                "acceptedSequence": 2,
+                "acceptedQuantity": 2,
+                "remainingQuantity": 2,
+                "executedQuantity": 0,
+                "cancelledQuantity": 0
+              }
+            ],
+            "bidPriority": [
+              "b"
+            ],
+            "askPriority": [
+              "a"
+            ]
+          }
+        },
+        {
+          "command": {
+            "kind": "limit",
+            "orderId": "c",
+            "side": "buy",
+            "priceTicks": 100,
+            "quantity": 1
+          },
+          "result": {
+            "status": "ACCEPTED",
+            "reason": "LIMIT",
+            "acceptedSequence": 3,
+            "trades": [
+              {
+                "tradeId": "3:1",
+                "makerId": "a",
+                "takerId": "c",
+                "priceTicks": 100,
+                "quantity": 1
+              }
+            ]
+          },
+          "snapshot": {
+            "acceptedSequence": 3,
+            "acceptedQuantity": 6,
+            "executedQuantity": 1,
+            "cancelledQuantity": 0,
+            "executedNotional": 100,
+            "orders": [
+              {
+                "orderId": "a",
+                "side": "sell",
+                "priceTicks": 100,
+                "acceptedSequence": 1,
+                "acceptedQuantity": 3,
+                "remainingQuantity": 2,
+                "executedQuantity": 1,
+                "cancelledQuantity": 0
+              },
+              {
+                "orderId": "b",
+                "side": "buy",
+                "priceTicks": 90,
+                "acceptedSequence": 2,
+                "acceptedQuantity": 2,
+                "remainingQuantity": 2,
+                "executedQuantity": 0,
+                "cancelledQuantity": 0
+              },
+              {
+                "orderId": "c",
+                "side": "buy",
+                "priceTicks": 100,
+                "acceptedSequence": 3,
+                "acceptedQuantity": 1,
+                "remainingQuantity": 0,
+                "executedQuantity": 1,
+                "cancelledQuantity": 0
+              }
+            ],
+            "bidPriority": [
+              "b"
+            ],
+            "askPriority": [
+              "a"
+            ]
+          }
+        },
+        {
+          "command": {
+            "kind": "limit",
+            "orderId": "x",
+            "side": "buy",
+            "priceTicks": 80,
+            "quantity": 1
+          },
+          "result": {
+            "status": "REJECTED",
+            "reason": "RESTING_CAPACITY",
+            "acceptedSequence": 3,
+            "trades": []
+          },
+          "snapshot": {
+            "acceptedSequence": 3,
+            "acceptedQuantity": 6,
+            "executedQuantity": 1,
+            "cancelledQuantity": 0,
+            "executedNotional": 100,
+            "orders": [
+              {
+                "orderId": "a",
+                "side": "sell",
+                "priceTicks": 100,
+                "acceptedSequence": 1,
+                "acceptedQuantity": 3,
+                "remainingQuantity": 2,
+                "executedQuantity": 1,
+                "cancelledQuantity": 0
+              },
+              {
+                "orderId": "b",
+                "side": "buy",
+                "priceTicks": 90,
+                "acceptedSequence": 2,
+                "acceptedQuantity": 2,
+                "remainingQuantity": 2,
+                "executedQuantity": 0,
+                "cancelledQuantity": 0
+              },
+              {
+                "orderId": "c",
+                "side": "buy",
+                "priceTicks": 100,
+                "acceptedSequence": 3,
+                "acceptedQuantity": 1,
+                "remainingQuantity": 0,
+                "executedQuantity": 1,
+                "cancelledQuantity": 0
+              }
+            ],
+            "bidPriority": [
+              "b"
+            ],
+            "askPriority": [
+              "a"
+            ]
+          }
+        },
+        {
+          "command": {
+            "kind": "limit",
+            "orderId": "d",
+            "side": "buy",
+            "priceTicks": 100,
+            "quantity": 2
+          },
+          "result": {
+            "status": "ACCEPTED",
+            "reason": "LIMIT",
+            "acceptedSequence": 4,
+            "trades": [
+              {
+                "tradeId": "4:1",
+                "makerId": "a",
+                "takerId": "d",
+                "priceTicks": 100,
+                "quantity": 2
+              }
+            ]
+          },
+          "snapshot": {
+            "acceptedSequence": 4,
+            "acceptedQuantity": 8,
+            "executedQuantity": 3,
+            "cancelledQuantity": 0,
+            "executedNotional": 300,
+            "orders": [
+              {
+                "orderId": "a",
+                "side": "sell",
+                "priceTicks": 100,
+                "acceptedSequence": 1,
+                "acceptedQuantity": 3,
+                "remainingQuantity": 0,
+                "executedQuantity": 3,
+                "cancelledQuantity": 0
+              },
+              {
+                "orderId": "b",
+                "side": "buy",
+                "priceTicks": 90,
+                "acceptedSequence": 2,
+                "acceptedQuantity": 2,
+                "remainingQuantity": 2,
+                "executedQuantity": 0,
+                "cancelledQuantity": 0
+              },
+              {
+                "orderId": "c",
+                "side": "buy",
+                "priceTicks": 100,
+                "acceptedSequence": 3,
+                "acceptedQuantity": 1,
+                "remainingQuantity": 0,
+                "executedQuantity": 1,
+                "cancelledQuantity": 0
+              },
+              {
+                "orderId": "d",
+                "side": "buy",
+                "priceTicks": 100,
+                "acceptedSequence": 4,
+                "acceptedQuantity": 2,
+                "remainingQuantity": 0,
+                "executedQuantity": 2,
+                "cancelledQuantity": 0
+              }
+            ],
+            "bidPriority": [
+              "b"
+            ],
+            "askPriority": []
+          }
+        }
+      ]
+    },
+    {
+      "id": "B-mirror",
+      "resting": 2,
+      "lifetimeIds": 8,
+      "steps": [
+        {
+          "command": {
+            "kind": "limit",
+            "orderId": "a",
+            "side": "buy",
+            "priceTicks": 100,
+            "quantity": 3
+          },
+          "result": {
+            "status": "ACCEPTED",
+            "reason": "LIMIT",
+            "acceptedSequence": 1,
+            "trades": []
+          },
+          "snapshot": {
+            "acceptedSequence": 1,
+            "acceptedQuantity": 3,
+            "executedQuantity": 0,
+            "cancelledQuantity": 0,
+            "executedNotional": 0,
+            "orders": [
+              {
+                "orderId": "a",
+                "side": "buy",
+                "priceTicks": 100,
+                "acceptedSequence": 1,
+                "acceptedQuantity": 3,
+                "remainingQuantity": 3,
+                "executedQuantity": 0,
+                "cancelledQuantity": 0
+              }
+            ],
+            "bidPriority": [
+              "a"
+            ],
+            "askPriority": []
+          }
+        },
+        {
+          "command": {
+            "kind": "limit",
+            "orderId": "b",
+            "side": "sell",
+            "priceTicks": 110,
+            "quantity": 2
+          },
+          "result": {
+            "status": "ACCEPTED",
+            "reason": "LIMIT",
+            "acceptedSequence": 2,
+            "trades": []
+          },
+          "snapshot": {
+            "acceptedSequence": 2,
+            "acceptedQuantity": 5,
+            "executedQuantity": 0,
+            "cancelledQuantity": 0,
+            "executedNotional": 0,
+            "orders": [
+              {
+                "orderId": "a",
+                "side": "buy",
+                "priceTicks": 100,
+                "acceptedSequence": 1,
+                "acceptedQuantity": 3,
+                "remainingQuantity": 3,
+                "executedQuantity": 0,
+                "cancelledQuantity": 0
+              },
+              {
+                "orderId": "b",
+                "side": "sell",
+                "priceTicks": 110,
+                "acceptedSequence": 2,
+                "acceptedQuantity": 2,
+                "remainingQuantity": 2,
+                "executedQuantity": 0,
+                "cancelledQuantity": 0
+              }
+            ],
+            "bidPriority": [
+              "a"
+            ],
+            "askPriority": [
+              "b"
+            ]
+          }
+        },
+        {
+          "command": {
+            "kind": "limit",
+            "orderId": "c",
+            "side": "sell",
+            "priceTicks": 100,
+            "quantity": 1
+          },
+          "result": {
+            "status": "ACCEPTED",
+            "reason": "LIMIT",
+            "acceptedSequence": 3,
+            "trades": [
+              {
+                "tradeId": "3:1",
+                "makerId": "a",
+                "takerId": "c",
+                "priceTicks": 100,
+                "quantity": 1
+              }
+            ]
+          },
+          "snapshot": {
+            "acceptedSequence": 3,
+            "acceptedQuantity": 6,
+            "executedQuantity": 1,
+            "cancelledQuantity": 0,
+            "executedNotional": 100,
+            "orders": [
+              {
+                "orderId": "a",
+                "side": "buy",
+                "priceTicks": 100,
+                "acceptedSequence": 1,
+                "acceptedQuantity": 3,
+                "remainingQuantity": 2,
+                "executedQuantity": 1,
+                "cancelledQuantity": 0
+              },
+              {
+                "orderId": "b",
+                "side": "sell",
+                "priceTicks": 110,
+                "acceptedSequence": 2,
+                "acceptedQuantity": 2,
+                "remainingQuantity": 2,
+                "executedQuantity": 0,
+                "cancelledQuantity": 0
+              },
+              {
+                "orderId": "c",
+                "side": "sell",
+                "priceTicks": 100,
+                "acceptedSequence": 3,
+                "acceptedQuantity": 1,
+                "remainingQuantity": 0,
+                "executedQuantity": 1,
+                "cancelledQuantity": 0
+              }
+            ],
+            "bidPriority": [
+              "a"
+            ],
+            "askPriority": [
+              "b"
+            ]
+          }
+        },
+        {
+          "command": {
+            "kind": "limit",
+            "orderId": "x",
+            "side": "sell",
+            "priceTicks": 120,
+            "quantity": 1
+          },
+          "result": {
+            "status": "REJECTED",
+            "reason": "RESTING_CAPACITY",
+            "acceptedSequence": 3,
+            "trades": []
+          },
+          "snapshot": {
+            "acceptedSequence": 3,
+            "acceptedQuantity": 6,
+            "executedQuantity": 1,
+            "cancelledQuantity": 0,
+            "executedNotional": 100,
+            "orders": [
+              {
+                "orderId": "a",
+                "side": "buy",
+                "priceTicks": 100,
+                "acceptedSequence": 1,
+                "acceptedQuantity": 3,
+                "remainingQuantity": 2,
+                "executedQuantity": 1,
+                "cancelledQuantity": 0
+              },
+              {
+                "orderId": "b",
+                "side": "sell",
+                "priceTicks": 110,
+                "acceptedSequence": 2,
+                "acceptedQuantity": 2,
+                "remainingQuantity": 2,
+                "executedQuantity": 0,
+                "cancelledQuantity": 0
+              },
+              {
+                "orderId": "c",
+                "side": "sell",
+                "priceTicks": 100,
+                "acceptedSequence": 3,
+                "acceptedQuantity": 1,
+                "remainingQuantity": 0,
+                "executedQuantity": 1,
+                "cancelledQuantity": 0
+              }
+            ],
+            "bidPriority": [
+              "a"
+            ],
+            "askPriority": [
+              "b"
+            ]
+          }
+        },
+        {
+          "command": {
+            "kind": "limit",
+            "orderId": "d",
+            "side": "sell",
+            "priceTicks": 100,
+            "quantity": 2
+          },
+          "result": {
+            "status": "ACCEPTED",
+            "reason": "LIMIT",
+            "acceptedSequence": 4,
+            "trades": [
+              {
+                "tradeId": "4:1",
+                "makerId": "a",
+                "takerId": "d",
+                "priceTicks": 100,
+                "quantity": 2
+              }
+            ]
+          },
+          "snapshot": {
+            "acceptedSequence": 4,
+            "acceptedQuantity": 8,
+            "executedQuantity": 3,
+            "cancelledQuantity": 0,
+            "executedNotional": 300,
+            "orders": [
+              {
+                "orderId": "a",
+                "side": "buy",
+                "priceTicks": 100,
+                "acceptedSequence": 1,
+                "acceptedQuantity": 3,
+                "remainingQuantity": 0,
+                "executedQuantity": 3,
+                "cancelledQuantity": 0
+              },
+              {
+                "orderId": "b",
+                "side": "sell",
+                "priceTicks": 110,
+                "acceptedSequence": 2,
+                "acceptedQuantity": 2,
+                "remainingQuantity": 2,
+                "executedQuantity": 0,
+                "cancelledQuantity": 0
+              },
+              {
+                "orderId": "c",
+                "side": "sell",
+                "priceTicks": 100,
+                "acceptedSequence": 3,
+                "acceptedQuantity": 1,
+                "remainingQuantity": 0,
+                "executedQuantity": 1,
+                "cancelledQuantity": 0
+              },
+              {
+                "orderId": "d",
+                "side": "sell",
+                "priceTicks": 100,
+                "acceptedSequence": 4,
+                "acceptedQuantity": 2,
+                "remainingQuantity": 0,
+                "executedQuantity": 2,
+                "cancelledQuantity": 0
+              }
+            ],
+            "bidPriority": [],
+            "askPriority": [
+              "b"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "C-direct",
+      "resting": 2,
+      "lifetimeIds": 8,
+      "steps": [
+        {
+          "command": {
+            "kind": "limit",
+            "orderId": "a",
+            "side": "sell",
+            "priceTicks": 100,
+            "quantity": 1
+          },
+          "result": {
+            "status": "ACCEPTED",
+            "reason": "LIMIT",
+            "acceptedSequence": 1,
+            "trades": []
+          },
+          "snapshot": {
+            "acceptedSequence": 1,
+            "acceptedQuantity": 1,
+            "executedQuantity": 0,
+            "cancelledQuantity": 0,
+            "executedNotional": 0,
+            "orders": [
+              {
+                "orderId": "a",
+                "side": "sell",
+                "priceTicks": 100,
+                "acceptedSequence": 1,
+                "acceptedQuantity": 1,
+                "remainingQuantity": 1,
+                "executedQuantity": 0,
+                "cancelledQuantity": 0
+              }
+            ],
+            "bidPriority": [],
+            "askPriority": [
+              "a"
+            ]
+          }
+        },
+        {
+          "command": {
+            "kind": "limit",
+            "orderId": "b",
+            "side": "buy",
+            "priceTicks": 90,
+            "quantity": 1
+          },
+          "result": {
+            "status": "ACCEPTED",
+            "reason": "LIMIT",
+            "acceptedSequence": 2,
+            "trades": []
+          },
+          "snapshot": {
+            "acceptedSequence": 2,
+            "acceptedQuantity": 2,
+            "executedQuantity": 0,
+            "cancelledQuantity": 0,
+            "executedNotional": 0,
+            "orders": [
+              {
+                "orderId": "a",
+                "side": "sell",
+                "priceTicks": 100,
+                "acceptedSequence": 1,
+                "acceptedQuantity": 1,
+                "remainingQuantity": 1,
+                "executedQuantity": 0,
+                "cancelledQuantity": 0
+              },
+              {
+                "orderId": "b",
+                "side": "buy",
+                "priceTicks": 90,
+                "acceptedSequence": 2,
+                "acceptedQuantity": 1,
+                "remainingQuantity": 1,
+                "executedQuantity": 0,
+                "cancelledQuantity": 0
+              }
+            ],
+            "bidPriority": [
+              "b"
+            ],
+            "askPriority": [
+              "a"
+            ]
+          }
+        },
+        {
+          "command": {
+            "kind": "limit",
+            "orderId": "t",
+            "side": "buy",
+            "priceTicks": 100,
+            "quantity": 2
+          },
+          "result": {
+            "status": "ACCEPTED",
+            "reason": "LIMIT",
+            "acceptedSequence": 3,
+            "trades": [
+              {
+                "tradeId": "3:1",
+                "makerId": "a",
+                "takerId": "t",
+                "priceTicks": 100,
+                "quantity": 1
+              }
+            ]
+          },
+          "snapshot": {
+            "acceptedSequence": 3,
+            "acceptedQuantity": 4,
+            "executedQuantity": 1,
+            "cancelledQuantity": 0,
+            "executedNotional": 100,
+            "orders": [
+              {
+                "orderId": "a",
+                "side": "sell",
+                "priceTicks": 100,
+                "acceptedSequence": 1,
+                "acceptedQuantity": 1,
+                "remainingQuantity": 0,
+                "executedQuantity": 1,
+                "cancelledQuantity": 0
+              },
+              {
+                "orderId": "b",
+                "side": "buy",
+                "priceTicks": 90,
+                "acceptedSequence": 2,
+                "acceptedQuantity": 1,
+                "remainingQuantity": 1,
+                "executedQuantity": 0,
+                "cancelledQuantity": 0
+              },
+              {
+                "orderId": "t",
+                "side": "buy",
+                "priceTicks": 100,
+                "acceptedSequence": 3,
+                "acceptedQuantity": 2,
+                "remainingQuantity": 1,
+                "executedQuantity": 1,
+                "cancelledQuantity": 0
+              }
+            ],
+            "bidPriority": [
+              "t",
+              "b"
+            ],
+            "askPriority": []
+          }
+        }
+      ]
+    },
+    {
+      "id": "C-mirror",
+      "resting": 2,
+      "lifetimeIds": 8,
+      "steps": [
+        {
+          "command": {
+            "kind": "limit",
+            "orderId": "a",
+            "side": "buy",
+            "priceTicks": 100,
+            "quantity": 1
+          },
+          "result": {
+            "status": "ACCEPTED",
+            "reason": "LIMIT",
+            "acceptedSequence": 1,
+            "trades": []
+          },
+          "snapshot": {
+            "acceptedSequence": 1,
+            "acceptedQuantity": 1,
+            "executedQuantity": 0,
+            "cancelledQuantity": 0,
+            "executedNotional": 0,
+            "orders": [
+              {
+                "orderId": "a",
+                "side": "buy",
+                "priceTicks": 100,
+                "acceptedSequence": 1,
+                "acceptedQuantity": 1,
+                "remainingQuantity": 1,
+                "executedQuantity": 0,
+                "cancelledQuantity": 0
+              }
+            ],
+            "bidPriority": [
+              "a"
+            ],
+            "askPriority": []
+          }
+        },
+        {
+          "command": {
+            "kind": "limit",
+            "orderId": "b",
+            "side": "sell",
+            "priceTicks": 110,
+            "quantity": 1
+          },
+          "result": {
+            "status": "ACCEPTED",
+            "reason": "LIMIT",
+            "acceptedSequence": 2,
+            "trades": []
+          },
+          "snapshot": {
+            "acceptedSequence": 2,
+            "acceptedQuantity": 2,
+            "executedQuantity": 0,
+            "cancelledQuantity": 0,
+            "executedNotional": 0,
+            "orders": [
+              {
+                "orderId": "a",
+                "side": "buy",
+                "priceTicks": 100,
+                "acceptedSequence": 1,
+                "acceptedQuantity": 1,
+                "remainingQuantity": 1,
+                "executedQuantity": 0,
+                "cancelledQuantity": 0
+              },
+              {
+                "orderId": "b",
+                "side": "sell",
+                "priceTicks": 110,
+                "acceptedSequence": 2,
+                "acceptedQuantity": 1,
+                "remainingQuantity": 1,
+                "executedQuantity": 0,
+                "cancelledQuantity": 0
+              }
+            ],
+            "bidPriority": [
+              "a"
+            ],
+            "askPriority": [
+              "b"
+            ]
+          }
+        },
+        {
+          "command": {
+            "kind": "limit",
+            "orderId": "t",
+            "side": "sell",
+            "priceTicks": 100,
+            "quantity": 2
+          },
+          "result": {
+            "status": "ACCEPTED",
+            "reason": "LIMIT",
+            "acceptedSequence": 3,
+            "trades": [
+              {
+                "tradeId": "3:1",
+                "makerId": "a",
+                "takerId": "t",
+                "priceTicks": 100,
+                "quantity": 1
+              }
+            ]
+          },
+          "snapshot": {
+            "acceptedSequence": 3,
+            "acceptedQuantity": 4,
+            "executedQuantity": 1,
+            "cancelledQuantity": 0,
+            "executedNotional": 100,
+            "orders": [
+              {
+                "orderId": "a",
+                "side": "buy",
+                "priceTicks": 100,
+                "acceptedSequence": 1,
+                "acceptedQuantity": 1,
+                "remainingQuantity": 0,
+                "executedQuantity": 1,
+                "cancelledQuantity": 0
+              },
+              {
+                "orderId": "b",
+                "side": "sell",
+                "priceTicks": 110,
+                "acceptedSequence": 2,
+                "acceptedQuantity": 1,
+                "remainingQuantity": 1,
+                "executedQuantity": 0,
+                "cancelledQuantity": 0
+              },
+              {
+                "orderId": "t",
+                "side": "sell",
+                "priceTicks": 100,
+                "acceptedSequence": 3,
+                "acceptedQuantity": 2,
+                "remainingQuantity": 1,
+                "executedQuantity": 1,
+                "cancelledQuantity": 0
+              }
+            ],
+            "bidPriority": [],
+            "askPriority": [
+              "t",
+              "b"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "D-direct",
+      "resting": 1,
+      "lifetimeIds": 2,
+      "steps": [
+        {
+          "command": {
+            "kind": "limit",
+            "orderId": "a",
+            "side": "sell",
+            "priceTicks": 100,
+            "quantity": 1
+          },
+          "result": {
+            "status": "ACCEPTED",
+            "reason": "LIMIT",
+            "acceptedSequence": 1,
+            "trades": []
+          },
+          "snapshot": {
+            "acceptedSequence": 1,
+            "acceptedQuantity": 1,
+            "executedQuantity": 0,
+            "cancelledQuantity": 0,
+            "executedNotional": 0,
+            "orders": [
+              {
+                "orderId": "a",
+                "side": "sell",
+                "priceTicks": 100,
+                "acceptedSequence": 1,
+                "acceptedQuantity": 1,
+                "remainingQuantity": 1,
+                "executedQuantity": 0,
+                "cancelledQuantity": 0
+              }
+            ],
+            "bidPriority": [],
+            "askPriority": [
+              "a"
+            ]
+          }
+        },
+        {
+          "command": {
+            "kind": "limit",
+            "orderId": "b",
+            "side": "buy",
+            "priceTicks": 100,
+            "quantity": 1
+          },
+          "result": {
+            "status": "ACCEPTED",
+            "reason": "LIMIT",
+            "acceptedSequence": 2,
+            "trades": [
+              {
+                "tradeId": "2:1",
+                "makerId": "a",
+                "takerId": "b",
+                "priceTicks": 100,
+                "quantity": 1
+              }
+            ]
+          },
+          "snapshot": {
+            "acceptedSequence": 2,
+            "acceptedQuantity": 2,
+            "executedQuantity": 1,
+            "cancelledQuantity": 0,
+            "executedNotional": 100,
+            "orders": [
+              {
+                "orderId": "a",
+                "side": "sell",
+                "priceTicks": 100,
+                "acceptedSequence": 1,
+                "acceptedQuantity": 1,
+                "remainingQuantity": 0,
+                "executedQuantity": 1,
+                "cancelledQuantity": 0
+              },
+              {
+                "orderId": "b",
+                "side": "buy",
+                "priceTicks": 100,
+                "acceptedSequence": 2,
+                "acceptedQuantity": 1,
+                "remainingQuantity": 0,
+                "executedQuantity": 1,
+                "cancelledQuantity": 0
+              }
+            ],
+            "bidPriority": [],
+            "askPriority": []
+          }
+        },
+        {
+          "command": {
+            "kind": "limit",
+            "orderId": "c",
+            "side": "buy",
+            "priceTicks": 90,
+            "quantity": 1
+          },
+          "result": {
+            "status": "REJECTED",
+            "reason": "LIFETIME_ID_CAPACITY",
+            "acceptedSequence": 2,
+            "trades": []
+          },
+          "snapshot": {
+            "acceptedSequence": 2,
+            "acceptedQuantity": 2,
+            "executedQuantity": 1,
+            "cancelledQuantity": 0,
+            "executedNotional": 100,
+            "orders": [
+              {
+                "orderId": "a",
+                "side": "sell",
+                "priceTicks": 100,
+                "acceptedSequence": 1,
+                "acceptedQuantity": 1,
+                "remainingQuantity": 0,
+                "executedQuantity": 1,
+                "cancelledQuantity": 0
+              },
+              {
+                "orderId": "b",
+                "side": "buy",
+                "priceTicks": 100,
+                "acceptedSequence": 2,
+                "acceptedQuantity": 1,
+                "remainingQuantity": 0,
+                "executedQuantity": 1,
+                "cancelledQuantity": 0
+              }
+            ],
+            "bidPriority": [],
+            "askPriority": []
+          }
+        },
+        {
+          "command": {
+            "kind": "limit",
+            "orderId": "a",
+            "side": "buy",
+            "priceTicks": 90,
+            "quantity": 1
+          },
+          "result": {
+            "status": "REJECTED",
+            "reason": "DUPLICATE_ID",
+            "acceptedSequence": 2,
+            "trades": []
+          },
+          "snapshot": {
+            "acceptedSequence": 2,
+            "acceptedQuantity": 2,
+            "executedQuantity": 1,
+            "cancelledQuantity": 0,
+            "executedNotional": 100,
+            "orders": [
+              {
+                "orderId": "a",
+                "side": "sell",
+                "priceTicks": 100,
+                "acceptedSequence": 1,
+                "acceptedQuantity": 1,
+                "remainingQuantity": 0,
+                "executedQuantity": 1,
+                "cancelledQuantity": 0
+              },
+              {
+                "orderId": "b",
+                "side": "buy",
+                "priceTicks": 100,
+                "acceptedSequence": 2,
+                "acceptedQuantity": 1,
+                "remainingQuantity": 0,
+                "executedQuantity": 1,
+                "cancelledQuantity": 0
+              }
+            ],
+            "bidPriority": [],
+            "askPriority": []
+          }
+        },
+        {
+          "command": {
+            "kind": "cancel",
+            "orderId": "a",
+            "side": null,
+            "priceTicks": null,
+            "quantity": null
+          },
+          "result": {
+            "status": "REJECTED",
+            "reason": "NOT_RESTING",
+            "acceptedSequence": 2,
+            "trades": []
+          },
+          "snapshot": {
+            "acceptedSequence": 2,
+            "acceptedQuantity": 2,
+            "executedQuantity": 1,
+            "cancelledQuantity": 0,
+            "executedNotional": 100,
+            "orders": [
+              {
+                "orderId": "a",
+                "side": "sell",
+                "priceTicks": 100,
+                "acceptedSequence": 1,
+                "acceptedQuantity": 1,
+                "remainingQuantity": 0,
+                "executedQuantity": 1,
+                "cancelledQuantity": 0
+              },
+              {
+                "orderId": "b",
+                "side": "buy",
+                "priceTicks": 100,
+                "acceptedSequence": 2,
+                "acceptedQuantity": 1,
+                "remainingQuantity": 0,
+                "executedQuantity": 1,
+                "cancelledQuantity": 0
+              }
+            ],
+            "bidPriority": [],
+            "askPriority": []
+          }
+        }
+      ]
+    },
+    {
+      "id": "D-mirror",
+      "resting": 1,
+      "lifetimeIds": 2,
+      "steps": [
+        {
+          "command": {
+            "kind": "limit",
+            "orderId": "a",
+            "side": "buy",
+            "priceTicks": 100,
+            "quantity": 1
+          },
+          "result": {
+            "status": "ACCEPTED",
+            "reason": "LIMIT",
+            "acceptedSequence": 1,
+            "trades": []
+          },
+          "snapshot": {
+            "acceptedSequence": 1,
+            "acceptedQuantity": 1,
+            "executedQuantity": 0,
+            "cancelledQuantity": 0,
+            "executedNotional": 0,
+            "orders": [
+              {
+                "orderId": "a",
+                "side": "buy",
+                "priceTicks": 100,
+                "acceptedSequence": 1,
+                "acceptedQuantity": 1,
+                "remainingQuantity": 1,
+                "executedQuantity": 0,
+                "cancelledQuantity": 0
+              }
+            ],
+            "bidPriority": [
+              "a"
+            ],
+            "askPriority": []
+          }
+        },
+        {
+          "command": {
+            "kind": "limit",
+            "orderId": "b",
+            "side": "sell",
+            "priceTicks": 100,
+            "quantity": 1
+          },
+          "result": {
+            "status": "ACCEPTED",
+            "reason": "LIMIT",
+            "acceptedSequence": 2,
+            "trades": [
+              {
+                "tradeId": "2:1",
+                "makerId": "a",
+                "takerId": "b",
+                "priceTicks": 100,
+                "quantity": 1
+              }
+            ]
+          },
+          "snapshot": {
+            "acceptedSequence": 2,
+            "acceptedQuantity": 2,
+            "executedQuantity": 1,
+            "cancelledQuantity": 0,
+            "executedNotional": 100,
+            "orders": [
+              {
+                "orderId": "a",
+                "side": "buy",
+                "priceTicks": 100,
+                "acceptedSequence": 1,
+                "acceptedQuantity": 1,
+                "remainingQuantity": 0,
+                "executedQuantity": 1,
+                "cancelledQuantity": 0
+              },
+              {
+                "orderId": "b",
+                "side": "sell",
+                "priceTicks": 100,
+                "acceptedSequence": 2,
+                "acceptedQuantity": 1,
+                "remainingQuantity": 0,
+                "executedQuantity": 1,
+                "cancelledQuantity": 0
+              }
+            ],
+            "bidPriority": [],
+            "askPriority": []
+          }
+        },
+        {
+          "command": {
+            "kind": "limit",
+            "orderId": "c",
+            "side": "sell",
+            "priceTicks": 110,
+            "quantity": 1
+          },
+          "result": {
+            "status": "REJECTED",
+            "reason": "LIFETIME_ID_CAPACITY",
+            "acceptedSequence": 2,
+            "trades": []
+          },
+          "snapshot": {
+            "acceptedSequence": 2,
+            "acceptedQuantity": 2,
+            "executedQuantity": 1,
+            "cancelledQuantity": 0,
+            "executedNotional": 100,
+            "orders": [
+              {
+                "orderId": "a",
+                "side": "buy",
+                "priceTicks": 100,
+                "acceptedSequence": 1,
+                "acceptedQuantity": 1,
+                "remainingQuantity": 0,
+                "executedQuantity": 1,
+                "cancelledQuantity": 0
+              },
+              {
+                "orderId": "b",
+                "side": "sell",
+                "priceTicks": 100,
+                "acceptedSequence": 2,
+                "acceptedQuantity": 1,
+                "remainingQuantity": 0,
+                "executedQuantity": 1,
+                "cancelledQuantity": 0
+              }
+            ],
+            "bidPriority": [],
+            "askPriority": []
+          }
+        },
+        {
+          "command": {
+            "kind": "limit",
+            "orderId": "a",
+            "side": "sell",
+            "priceTicks": 110,
+            "quantity": 1
+          },
+          "result": {
+            "status": "REJECTED",
+            "reason": "DUPLICATE_ID",
+            "acceptedSequence": 2,
+            "trades": []
+          },
+          "snapshot": {
+            "acceptedSequence": 2,
+            "acceptedQuantity": 2,
+            "executedQuantity": 1,
+            "cancelledQuantity": 0,
+            "executedNotional": 100,
+            "orders": [
+              {
+                "orderId": "a",
+                "side": "buy",
+                "priceTicks": 100,
+                "acceptedSequence": 1,
+                "acceptedQuantity": 1,
+                "remainingQuantity": 0,
+                "executedQuantity": 1,
+                "cancelledQuantity": 0
+              },
+              {
+                "orderId": "b",
+                "side": "sell",
+                "priceTicks": 100,
+                "acceptedSequence": 2,
+                "acceptedQuantity": 1,
+                "remainingQuantity": 0,
+                "executedQuantity": 1,
+                "cancelledQuantity": 0
+              }
+            ],
+            "bidPriority": [],
+            "askPriority": []
+          }
+        },
+        {
+          "command": {
+            "kind": "cancel",
+            "orderId": "a",
+            "side": null,
+            "priceTicks": null,
+            "quantity": null
+          },
+          "result": {
+            "status": "REJECTED",
+            "reason": "NOT_RESTING",
+            "acceptedSequence": 2,
+            "trades": []
+          },
+          "snapshot": {
+            "acceptedSequence": 2,
+            "acceptedQuantity": 2,
+            "executedQuantity": 1,
+            "cancelledQuantity": 0,
+            "executedNotional": 100,
+            "orders": [
+              {
+                "orderId": "a",
+                "side": "buy",
+                "priceTicks": 100,
+                "acceptedSequence": 1,
+                "acceptedQuantity": 1,
+                "remainingQuantity": 0,
+                "executedQuantity": 1,
+                "cancelledQuantity": 0
+              },
+              {
+                "orderId": "b",
+                "side": "sell",
+                "priceTicks": 100,
+                "acceptedSequence": 2,
+                "acceptedQuantity": 1,
+                "remainingQuantity": 0,
+                "executedQuantity": 1,
+                "cancelledQuantity": 0
+              }
+            ],
+            "bidPriority": [],
+            "askPriority": []
+          }
+        }
+      ]
+    },
+    {
+      "id": "E-direct",
+      "resting": 1,
+      "lifetimeIds": 2,
+      "steps": [
+        {
+          "command": {
+            "kind": "limit",
+            "orderId": "a",
+            "side": "buy",
+            "priceTicks": 90,
+            "quantity": 1
+          },
+          "result": {
+            "status": "ACCEPTED",
+            "reason": "LIMIT",
+            "acceptedSequence": 1,
+            "trades": []
+          },
+          "snapshot": {
+            "acceptedSequence": 1,
+            "acceptedQuantity": 1,
+            "executedQuantity": 0,
+            "cancelledQuantity": 0,
+            "executedNotional": 0,
+            "orders": [
+              {
+                "orderId": "a",
+                "side": "buy",
+                "priceTicks": 90,
+                "acceptedSequence": 1,
+                "acceptedQuantity": 1,
+                "remainingQuantity": 1,
+                "executedQuantity": 0,
+                "cancelledQuantity": 0
+              }
+            ],
+            "bidPriority": [
+              "a"
+            ],
+            "askPriority": []
+          }
+        },
+        {
+          "command": {
+            "kind": "cancel",
+            "orderId": "a",
+            "side": null,
+            "priceTicks": null,
+            "quantity": null
+          },
+          "result": {
+            "status": "ACCEPTED",
+            "reason": "CANCEL",
+            "acceptedSequence": 2,
+            "trades": []
+          },
+          "snapshot": {
+            "acceptedSequence": 2,
+            "acceptedQuantity": 1,
+            "executedQuantity": 0,
+            "cancelledQuantity": 1,
+            "executedNotional": 0,
+            "orders": [
+              {
+                "orderId": "a",
+                "side": "buy",
+                "priceTicks": 90,
+                "acceptedSequence": 1,
+                "acceptedQuantity": 1,
+                "remainingQuantity": 0,
+                "executedQuantity": 0,
+                "cancelledQuantity": 1
+              }
+            ],
+            "bidPriority": [],
+            "askPriority": []
+          }
+        },
+        {
+          "command": {
+            "kind": "limit",
+            "orderId": "b",
+            "side": "buy",
+            "priceTicks": 90,
+            "quantity": 1
+          },
+          "result": {
+            "status": "ACCEPTED",
+            "reason": "LIMIT",
+            "acceptedSequence": 3,
+            "trades": []
+          },
+          "snapshot": {
+            "acceptedSequence": 3,
+            "acceptedQuantity": 2,
+            "executedQuantity": 0,
+            "cancelledQuantity": 1,
+            "executedNotional": 0,
+            "orders": [
+              {
+                "orderId": "a",
+                "side": "buy",
+                "priceTicks": 90,
+                "acceptedSequence": 1,
+                "acceptedQuantity": 1,
+                "remainingQuantity": 0,
+                "executedQuantity": 0,
+                "cancelledQuantity": 1
+              },
+              {
+                "orderId": "b",
+                "side": "buy",
+                "priceTicks": 90,
+                "acceptedSequence": 3,
+                "acceptedQuantity": 1,
+                "remainingQuantity": 1,
+                "executedQuantity": 0,
+                "cancelledQuantity": 0
+              }
+            ],
+            "bidPriority": [
+              "b"
+            ],
+            "askPriority": []
+          }
+        },
+        {
+          "command": {
+            "kind": "limit",
+            "orderId": "c",
+            "side": "buy",
+            "priceTicks": 80,
+            "quantity": 1
+          },
+          "result": {
+            "status": "REJECTED",
+            "reason": "LIFETIME_ID_CAPACITY",
+            "acceptedSequence": 3,
+            "trades": []
+          },
+          "snapshot": {
+            "acceptedSequence": 3,
+            "acceptedQuantity": 2,
+            "executedQuantity": 0,
+            "cancelledQuantity": 1,
+            "executedNotional": 0,
+            "orders": [
+              {
+                "orderId": "a",
+                "side": "buy",
+                "priceTicks": 90,
+                "acceptedSequence": 1,
+                "acceptedQuantity": 1,
+                "remainingQuantity": 0,
+                "executedQuantity": 0,
+                "cancelledQuantity": 1
+              },
+              {
+                "orderId": "b",
+                "side": "buy",
+                "priceTicks": 90,
+                "acceptedSequence": 3,
+                "acceptedQuantity": 1,
+                "remainingQuantity": 1,
+                "executedQuantity": 0,
+                "cancelledQuantity": 0
+              }
+            ],
+            "bidPriority": [
+              "b"
+            ],
+            "askPriority": []
+          }
+        },
+        {
+          "command": {
+            "kind": "cancel",
+            "orderId": "b",
+            "side": null,
+            "priceTicks": null,
+            "quantity": null
+          },
+          "result": {
+            "status": "ACCEPTED",
+            "reason": "CANCEL",
+            "acceptedSequence": 4,
+            "trades": []
+          },
+          "snapshot": {
+            "acceptedSequence": 4,
+            "acceptedQuantity": 2,
+            "executedQuantity": 0,
+            "cancelledQuantity": 2,
+            "executedNotional": 0,
+            "orders": [
+              {
+                "orderId": "a",
+                "side": "buy",
+                "priceTicks": 90,
+                "acceptedSequence": 1,
+                "acceptedQuantity": 1,
+                "remainingQuantity": 0,
+                "executedQuantity": 0,
+                "cancelledQuantity": 1
+              },
+              {
+                "orderId": "b",
+                "side": "buy",
+                "priceTicks": 90,
+                "acceptedSequence": 3,
+                "acceptedQuantity": 1,
+                "remainingQuantity": 0,
+                "executedQuantity": 0,
+                "cancelledQuantity": 1
+              }
+            ],
+            "bidPriority": [],
+            "askPriority": []
+          }
+        },
+        {
+          "command": {
+            "kind": "limit",
+            "orderId": "c",
+            "side": "buy",
+            "priceTicks": 80,
+            "quantity": 1
+          },
+          "result": {
+            "status": "REJECTED",
+            "reason": "LIFETIME_ID_CAPACITY",
+            "acceptedSequence": 4,
+            "trades": []
+          },
+          "snapshot": {
+            "acceptedSequence": 4,
+            "acceptedQuantity": 2,
+            "executedQuantity": 0,
+            "cancelledQuantity": 2,
+            "executedNotional": 0,
+            "orders": [
+              {
+                "orderId": "a",
+                "side": "buy",
+                "priceTicks": 90,
+                "acceptedSequence": 1,
+                "acceptedQuantity": 1,
+                "remainingQuantity": 0,
+                "executedQuantity": 0,
+                "cancelledQuantity": 1
+              },
+              {
+                "orderId": "b",
+                "side": "buy",
+                "priceTicks": 90,
+                "acceptedSequence": 3,
+                "acceptedQuantity": 1,
+                "remainingQuantity": 0,
+                "executedQuantity": 0,
+                "cancelledQuantity": 1
+              }
+            ],
+            "bidPriority": [],
+            "askPriority": []
+          }
+        }
+      ]
+    },
+    {
+      "id": "E-mirror",
+      "resting": 1,
+      "lifetimeIds": 2,
+      "steps": [
+        {
+          "command": {
+            "kind": "limit",
+            "orderId": "a",
+            "side": "sell",
+            "priceTicks": 110,
+            "quantity": 1
+          },
+          "result": {
+            "status": "ACCEPTED",
+            "reason": "LIMIT",
+            "acceptedSequence": 1,
+            "trades": []
+          },
+          "snapshot": {
+            "acceptedSequence": 1,
+            "acceptedQuantity": 1,
+            "executedQuantity": 0,
+            "cancelledQuantity": 0,
+            "executedNotional": 0,
+            "orders": [
+              {
+                "orderId": "a",
+                "side": "sell",
+                "priceTicks": 110,
+                "acceptedSequence": 1,
+                "acceptedQuantity": 1,
+                "remainingQuantity": 1,
+                "executedQuantity": 0,
+                "cancelledQuantity": 0
+              }
+            ],
+            "bidPriority": [],
+            "askPriority": [
+              "a"
+            ]
+          }
+        },
+        {
+          "command": {
+            "kind": "cancel",
+            "orderId": "a",
+            "side": null,
+            "priceTicks": null,
+            "quantity": null
+          },
+          "result": {
+            "status": "ACCEPTED",
+            "reason": "CANCEL",
+            "acceptedSequence": 2,
+            "trades": []
+          },
+          "snapshot": {
+            "acceptedSequence": 2,
+            "acceptedQuantity": 1,
+            "executedQuantity": 0,
+            "cancelledQuantity": 1,
+            "executedNotional": 0,
+            "orders": [
+              {
+                "orderId": "a",
+                "side": "sell",
+                "priceTicks": 110,
+                "acceptedSequence": 1,
+                "acceptedQuantity": 1,
+                "remainingQuantity": 0,
+                "executedQuantity": 0,
+                "cancelledQuantity": 1
+              }
+            ],
+            "bidPriority": [],
+            "askPriority": []
+          }
+        },
+        {
+          "command": {
+            "kind": "limit",
+            "orderId": "b",
+            "side": "sell",
+            "priceTicks": 110,
+            "quantity": 1
+          },
+          "result": {
+            "status": "ACCEPTED",
+            "reason": "LIMIT",
+            "acceptedSequence": 3,
+            "trades": []
+          },
+          "snapshot": {
+            "acceptedSequence": 3,
+            "acceptedQuantity": 2,
+            "executedQuantity": 0,
+            "cancelledQuantity": 1,
+            "executedNotional": 0,
+            "orders": [
+              {
+                "orderId": "a",
+                "side": "sell",
+                "priceTicks": 110,
+                "acceptedSequence": 1,
+                "acceptedQuantity": 1,
+                "remainingQuantity": 0,
+                "executedQuantity": 0,
+                "cancelledQuantity": 1
+              },
+              {
+                "orderId": "b",
+                "side": "sell",
+                "priceTicks": 110,
+                "acceptedSequence": 3,
+                "acceptedQuantity": 1,
+                "remainingQuantity": 1,
+                "executedQuantity": 0,
+                "cancelledQuantity": 0
+              }
+            ],
+            "bidPriority": [],
+            "askPriority": [
+              "b"
+            ]
+          }
+        },
+        {
+          "command": {
+            "kind": "limit",
+            "orderId": "c",
+            "side": "sell",
+            "priceTicks": 120,
+            "quantity": 1
+          },
+          "result": {
+            "status": "REJECTED",
+            "reason": "LIFETIME_ID_CAPACITY",
+            "acceptedSequence": 3,
+            "trades": []
+          },
+          "snapshot": {
+            "acceptedSequence": 3,
+            "acceptedQuantity": 2,
+            "executedQuantity": 0,
+            "cancelledQuantity": 1,
+            "executedNotional": 0,
+            "orders": [
+              {
+                "orderId": "a",
+                "side": "sell",
+                "priceTicks": 110,
+                "acceptedSequence": 1,
+                "acceptedQuantity": 1,
+                "remainingQuantity": 0,
+                "executedQuantity": 0,
+                "cancelledQuantity": 1
+              },
+              {
+                "orderId": "b",
+                "side": "sell",
+                "priceTicks": 110,
+                "acceptedSequence": 3,
+                "acceptedQuantity": 1,
+                "remainingQuantity": 1,
+                "executedQuantity": 0,
+                "cancelledQuantity": 0
+              }
+            ],
+            "bidPriority": [],
+            "askPriority": [
+              "b"
+            ]
+          }
+        },
+        {
+          "command": {
+            "kind": "cancel",
+            "orderId": "b",
+            "side": null,
+            "priceTicks": null,
+            "quantity": null
+          },
+          "result": {
+            "status": "ACCEPTED",
+            "reason": "CANCEL",
+            "acceptedSequence": 4,
+            "trades": []
+          },
+          "snapshot": {
+            "acceptedSequence": 4,
+            "acceptedQuantity": 2,
+            "executedQuantity": 0,
+            "cancelledQuantity": 2,
+            "executedNotional": 0,
+            "orders": [
+              {
+                "orderId": "a",
+                "side": "sell",
+                "priceTicks": 110,
+                "acceptedSequence": 1,
+                "acceptedQuantity": 1,
+                "remainingQuantity": 0,
+                "executedQuantity": 0,
+                "cancelledQuantity": 1
+              },
+              {
+                "orderId": "b",
+                "side": "sell",
+                "priceTicks": 110,
+                "acceptedSequence": 3,
+                "acceptedQuantity": 1,
+                "remainingQuantity": 0,
+                "executedQuantity": 0,
+                "cancelledQuantity": 1
+              }
+            ],
+            "bidPriority": [],
+            "askPriority": []
+          }
+        },
+        {
+          "command": {
+            "kind": "limit",
+            "orderId": "c",
+            "side": "sell",
+            "priceTicks": 120,
+            "quantity": 1
+          },
+          "result": {
+            "status": "REJECTED",
+            "reason": "LIFETIME_ID_CAPACITY",
+            "acceptedSequence": 4,
+            "trades": []
+          },
+          "snapshot": {
+            "acceptedSequence": 4,
+            "acceptedQuantity": 2,
+            "executedQuantity": 0,
+            "cancelledQuantity": 2,
+            "executedNotional": 0,
+            "orders": [
+              {
+                "orderId": "a",
+                "side": "sell",
+                "priceTicks": 110,
+                "acceptedSequence": 1,
+                "acceptedQuantity": 1,
+                "remainingQuantity": 0,
+                "executedQuantity": 0,
+                "cancelledQuantity": 1
+              },
+              {
+                "orderId": "b",
+                "side": "sell",
+                "priceTicks": 110,
+                "acceptedSequence": 3,
+                "acceptedQuantity": 1,
+                "remainingQuantity": 0,
+                "executedQuantity": 0,
+                "cancelledQuantity": 1
+              }
+            ],
+            "bidPriority": [],
+            "askPriority": []
+          }
+        }
+      ]
+    },
+    {
+      "id": "F-direct",
+      "resting": 2,
+      "lifetimeIds": 8,
+      "steps": [
+        {
+          "command": {
+            "kind": "limit",
+            "orderId": "a",
+            "side": "sell",
+            "priceTicks": 100,
+            "quantity": 3
+          },
+          "result": {
+            "status": "ACCEPTED",
+            "reason": "LIMIT",
+            "acceptedSequence": 1,
+            "trades": []
+          },
+          "snapshot": {
+            "acceptedSequence": 1,
+            "acceptedQuantity": 3,
+            "executedQuantity": 0,
+            "cancelledQuantity": 0,
+            "executedNotional": 0,
+            "orders": [
+              {
+                "orderId": "a",
+                "side": "sell",
+                "priceTicks": 100,
+                "acceptedSequence": 1,
+                "acceptedQuantity": 3,
+                "remainingQuantity": 3,
+                "executedQuantity": 0,
+                "cancelledQuantity": 0
+              }
+            ],
+            "bidPriority": [],
+            "askPriority": [
+              "a"
+            ]
+          }
+        },
+        {
+          "command": {
+            "kind": "limit",
+            "orderId": "b",
+            "side": "sell",
+            "priceTicks": 100,
+            "quantity": 4
+          },
+          "result": {
+            "status": "ACCEPTED",
+            "reason": "LIMIT",
+            "acceptedSequence": 2,
+            "trades": []
+          },
+          "snapshot": {
+            "acceptedSequence": 2,
+            "acceptedQuantity": 7,
+            "executedQuantity": 0,
+            "cancelledQuantity": 0,
+            "executedNotional": 0,
+            "orders": [
+              {
+                "orderId": "a",
+                "side": "sell",
+                "priceTicks": 100,
+                "acceptedSequence": 1,
+                "acceptedQuantity": 3,
+                "remainingQuantity": 3,
+                "executedQuantity": 0,
+                "cancelledQuantity": 0
+              },
+              {
+                "orderId": "b",
+                "side": "sell",
+                "priceTicks": 100,
+                "acceptedSequence": 2,
+                "acceptedQuantity": 4,
+                "remainingQuantity": 4,
+                "executedQuantity": 0,
+                "cancelledQuantity": 0
+              }
+            ],
+            "bidPriority": [],
+            "askPriority": [
+              "a",
+              "b"
+            ]
+          }
+        },
+        {
+          "command": {
+            "kind": "limit",
+            "orderId": "c",
+            "side": "buy",
+            "priceTicks": 100,
+            "quantity": 1
+          },
+          "result": {
+            "status": "ACCEPTED",
+            "reason": "LIMIT",
+            "acceptedSequence": 3,
+            "trades": [
+              {
+                "tradeId": "3:1",
+                "makerId": "a",
+                "takerId": "c",
+                "priceTicks": 100,
+                "quantity": 1
+              }
+            ]
+          },
+          "snapshot": {
+            "acceptedSequence": 3,
+            "acceptedQuantity": 8,
+            "executedQuantity": 1,
+            "cancelledQuantity": 0,
+            "executedNotional": 100,
+            "orders": [
+              {
+                "orderId": "a",
+                "side": "sell",
+                "priceTicks": 100,
+                "acceptedSequence": 1,
+                "acceptedQuantity": 3,
+                "remainingQuantity": 2,
+                "executedQuantity": 1,
+                "cancelledQuantity": 0
+              },
+              {
+                "orderId": "b",
+                "side": "sell",
+                "priceTicks": 100,
+                "acceptedSequence": 2,
+                "acceptedQuantity": 4,
+                "remainingQuantity": 4,
+                "executedQuantity": 0,
+                "cancelledQuantity": 0
+              },
+              {
+                "orderId": "c",
+                "side": "buy",
+                "priceTicks": 100,
+                "acceptedSequence": 3,
+                "acceptedQuantity": 1,
+                "remainingQuantity": 0,
+                "executedQuantity": 1,
+                "cancelledQuantity": 0
+              }
+            ],
+            "bidPriority": [],
+            "askPriority": [
+              "a",
+              "b"
+            ]
+          }
+        },
+        {
+          "command": {
+            "kind": "limit",
+            "orderId": "x",
+            "side": "sell",
+            "priceTicks": 100,
+            "quantity": 1
+          },
+          "result": {
+            "status": "REJECTED",
+            "reason": "RESTING_CAPACITY",
+            "acceptedSequence": 3,
+            "trades": []
+          },
+          "snapshot": {
+            "acceptedSequence": 3,
+            "acceptedQuantity": 8,
+            "executedQuantity": 1,
+            "cancelledQuantity": 0,
+            "executedNotional": 100,
+            "orders": [
+              {
+                "orderId": "a",
+                "side": "sell",
+                "priceTicks": 100,
+                "acceptedSequence": 1,
+                "acceptedQuantity": 3,
+                "remainingQuantity": 2,
+                "executedQuantity": 1,
+                "cancelledQuantity": 0
+              },
+              {
+                "orderId": "b",
+                "side": "sell",
+                "priceTicks": 100,
+                "acceptedSequence": 2,
+                "acceptedQuantity": 4,
+                "remainingQuantity": 4,
+                "executedQuantity": 0,
+                "cancelledQuantity": 0
+              },
+              {
+                "orderId": "c",
+                "side": "buy",
+                "priceTicks": 100,
+                "acceptedSequence": 3,
+                "acceptedQuantity": 1,
+                "remainingQuantity": 0,
+                "executedQuantity": 1,
+                "cancelledQuantity": 0
+              }
+            ],
+            "bidPriority": [],
+            "askPriority": [
+              "a",
+              "b"
+            ]
+          }
+        },
+        {
+          "command": {
+            "kind": "limit",
+            "orderId": "d",
+            "side": "buy",
+            "priceTicks": 100,
+            "quantity": 4
+          },
+          "result": {
+            "status": "ACCEPTED",
+            "reason": "LIMIT",
+            "acceptedSequence": 4,
+            "trades": [
+              {
+                "tradeId": "4:1",
+                "makerId": "a",
+                "takerId": "d",
+                "priceTicks": 100,
+                "quantity": 2
+              },
+              {
+                "tradeId": "4:2",
+                "makerId": "b",
+                "takerId": "d",
+                "priceTicks": 100,
+                "quantity": 2
+              }
+            ]
+          },
+          "snapshot": {
+            "acceptedSequence": 4,
+            "acceptedQuantity": 12,
+            "executedQuantity": 5,
+            "cancelledQuantity": 0,
+            "executedNotional": 500,
+            "orders": [
+              {
+                "orderId": "a",
+                "side": "sell",
+                "priceTicks": 100,
+                "acceptedSequence": 1,
+                "acceptedQuantity": 3,
+                "remainingQuantity": 0,
+                "executedQuantity": 3,
+                "cancelledQuantity": 0
+              },
+              {
+                "orderId": "b",
+                "side": "sell",
+                "priceTicks": 100,
+                "acceptedSequence": 2,
+                "acceptedQuantity": 4,
+                "remainingQuantity": 2,
+                "executedQuantity": 2,
+                "cancelledQuantity": 0
+              },
+              {
+                "orderId": "c",
+                "side": "buy",
+                "priceTicks": 100,
+                "acceptedSequence": 3,
+                "acceptedQuantity": 1,
+                "remainingQuantity": 0,
+                "executedQuantity": 1,
+                "cancelledQuantity": 0
+              },
+              {
+                "orderId": "d",
+                "side": "buy",
+                "priceTicks": 100,
+                "acceptedSequence": 4,
+                "acceptedQuantity": 4,
+                "remainingQuantity": 0,
+                "executedQuantity": 4,
+                "cancelledQuantity": 0
+              }
+            ],
+            "bidPriority": [],
+            "askPriority": [
+              "b"
+            ]
+          }
+        },
+        {
+          "command": {
+            "kind": "limit",
+            "orderId": "x",
+            "side": "sell",
+            "priceTicks": 100,
+            "quantity": 1
+          },
+          "result": {
+            "status": "ACCEPTED",
+            "reason": "LIMIT",
+            "acceptedSequence": 5,
+            "trades": []
+          },
+          "snapshot": {
+            "acceptedSequence": 5,
+            "acceptedQuantity": 13,
+            "executedQuantity": 5,
+            "cancelledQuantity": 0,
+            "executedNotional": 500,
+            "orders": [
+              {
+                "orderId": "a",
+                "side": "sell",
+                "priceTicks": 100,
+                "acceptedSequence": 1,
+                "acceptedQuantity": 3,
+                "remainingQuantity": 0,
+                "executedQuantity": 3,
+                "cancelledQuantity": 0
+              },
+              {
+                "orderId": "b",
+                "side": "sell",
+                "priceTicks": 100,
+                "acceptedSequence": 2,
+                "acceptedQuantity": 4,
+                "remainingQuantity": 2,
+                "executedQuantity": 2,
+                "cancelledQuantity": 0
+              },
+              {
+                "orderId": "c",
+                "side": "buy",
+                "priceTicks": 100,
+                "acceptedSequence": 3,
+                "acceptedQuantity": 1,
+                "remainingQuantity": 0,
+                "executedQuantity": 1,
+                "cancelledQuantity": 0
+              },
+              {
+                "orderId": "d",
+                "side": "buy",
+                "priceTicks": 100,
+                "acceptedSequence": 4,
+                "acceptedQuantity": 4,
+                "remainingQuantity": 0,
+                "executedQuantity": 4,
+                "cancelledQuantity": 0
+              },
+              {
+                "orderId": "x",
+                "side": "sell",
+                "priceTicks": 100,
+                "acceptedSequence": 5,
+                "acceptedQuantity": 1,
+                "remainingQuantity": 1,
+                "executedQuantity": 0,
+                "cancelledQuantity": 0
+              }
+            ],
+            "bidPriority": [],
+            "askPriority": [
+              "b",
+              "x"
+            ]
+          }
+        },
+        {
+          "command": {
+            "kind": "limit",
+            "orderId": "t",
+            "side": "buy",
+            "priceTicks": 100,
+            "quantity": 3
+          },
+          "result": {
+            "status": "ACCEPTED",
+            "reason": "LIMIT",
+            "acceptedSequence": 6,
+            "trades": [
+              {
+                "tradeId": "6:1",
+                "makerId": "b",
+                "takerId": "t",
+                "priceTicks": 100,
+                "quantity": 2
+              },
+              {
+                "tradeId": "6:2",
+                "makerId": "x",
+                "takerId": "t",
+                "priceTicks": 100,
+                "quantity": 1
+              }
+            ]
+          },
+          "snapshot": {
+            "acceptedSequence": 6,
+            "acceptedQuantity": 16,
+            "executedQuantity": 8,
+            "cancelledQuantity": 0,
+            "executedNotional": 800,
+            "orders": [
+              {
+                "orderId": "a",
+                "side": "sell",
+                "priceTicks": 100,
+                "acceptedSequence": 1,
+                "acceptedQuantity": 3,
+                "remainingQuantity": 0,
+                "executedQuantity": 3,
+                "cancelledQuantity": 0
+              },
+              {
+                "orderId": "b",
+                "side": "sell",
+                "priceTicks": 100,
+                "acceptedSequence": 2,
+                "acceptedQuantity": 4,
+                "remainingQuantity": 0,
+                "executedQuantity": 4,
+                "cancelledQuantity": 0
+              },
+              {
+                "orderId": "c",
+                "side": "buy",
+                "priceTicks": 100,
+                "acceptedSequence": 3,
+                "acceptedQuantity": 1,
+                "remainingQuantity": 0,
+                "executedQuantity": 1,
+                "cancelledQuantity": 0
+              },
+              {
+                "orderId": "d",
+                "side": "buy",
+                "priceTicks": 100,
+                "acceptedSequence": 4,
+                "acceptedQuantity": 4,
+                "remainingQuantity": 0,
+                "executedQuantity": 4,
+                "cancelledQuantity": 0
+              },
+              {
+                "orderId": "t",
+                "side": "buy",
+                "priceTicks": 100,
+                "acceptedSequence": 6,
+                "acceptedQuantity": 3,
+                "remainingQuantity": 0,
+                "executedQuantity": 3,
+                "cancelledQuantity": 0
+              },
+              {
+                "orderId": "x",
+                "side": "sell",
+                "priceTicks": 100,
+                "acceptedSequence": 5,
+                "acceptedQuantity": 1,
+                "remainingQuantity": 0,
+                "executedQuantity": 1,
+                "cancelledQuantity": 0
+              }
+            ],
+            "bidPriority": [],
+            "askPriority": []
+          }
+        }
+      ]
+    },
+    {
+      "id": "F-mirror",
+      "resting": 2,
+      "lifetimeIds": 8,
+      "steps": [
+        {
+          "command": {
+            "kind": "limit",
+            "orderId": "a",
+            "side": "buy",
+            "priceTicks": 100,
+            "quantity": 3
+          },
+          "result": {
+            "status": "ACCEPTED",
+            "reason": "LIMIT",
+            "acceptedSequence": 1,
+            "trades": []
+          },
+          "snapshot": {
+            "acceptedSequence": 1,
+            "acceptedQuantity": 3,
+            "executedQuantity": 0,
+            "cancelledQuantity": 0,
+            "executedNotional": 0,
+            "orders": [
+              {
+                "orderId": "a",
+                "side": "buy",
+                "priceTicks": 100,
+                "acceptedSequence": 1,
+                "acceptedQuantity": 3,
+                "remainingQuantity": 3,
+                "executedQuantity": 0,
+                "cancelledQuantity": 0
+              }
+            ],
+            "bidPriority": [
+              "a"
+            ],
+            "askPriority": []
+          }
+        },
+        {
+          "command": {
+            "kind": "limit",
+            "orderId": "b",
+            "side": "buy",
+            "priceTicks": 100,
+            "quantity": 4
+          },
+          "result": {
+            "status": "ACCEPTED",
+            "reason": "LIMIT",
+            "acceptedSequence": 2,
+            "trades": []
+          },
+          "snapshot": {
+            "acceptedSequence": 2,
+            "acceptedQuantity": 7,
+            "executedQuantity": 0,
+            "cancelledQuantity": 0,
+            "executedNotional": 0,
+            "orders": [
+              {
+                "orderId": "a",
+                "side": "buy",
+                "priceTicks": 100,
+                "acceptedSequence": 1,
+                "acceptedQuantity": 3,
+                "remainingQuantity": 3,
+                "executedQuantity": 0,
+                "cancelledQuantity": 0
+              },
+              {
+                "orderId": "b",
+                "side": "buy",
+                "priceTicks": 100,
+                "acceptedSequence": 2,
+                "acceptedQuantity": 4,
+                "remainingQuantity": 4,
+                "executedQuantity": 0,
+                "cancelledQuantity": 0
+              }
+            ],
+            "bidPriority": [
+              "a",
+              "b"
+            ],
+            "askPriority": []
+          }
+        },
+        {
+          "command": {
+            "kind": "limit",
+            "orderId": "c",
+            "side": "sell",
+            "priceTicks": 100,
+            "quantity": 1
+          },
+          "result": {
+            "status": "ACCEPTED",
+            "reason": "LIMIT",
+            "acceptedSequence": 3,
+            "trades": [
+              {
+                "tradeId": "3:1",
+                "makerId": "a",
+                "takerId": "c",
+                "priceTicks": 100,
+                "quantity": 1
+              }
+            ]
+          },
+          "snapshot": {
+            "acceptedSequence": 3,
+            "acceptedQuantity": 8,
+            "executedQuantity": 1,
+            "cancelledQuantity": 0,
+            "executedNotional": 100,
+            "orders": [
+              {
+                "orderId": "a",
+                "side": "buy",
+                "priceTicks": 100,
+                "acceptedSequence": 1,
+                "acceptedQuantity": 3,
+                "remainingQuantity": 2,
+                "executedQuantity": 1,
+                "cancelledQuantity": 0
+              },
+              {
+                "orderId": "b",
+                "side": "buy",
+                "priceTicks": 100,
+                "acceptedSequence": 2,
+                "acceptedQuantity": 4,
+                "remainingQuantity": 4,
+                "executedQuantity": 0,
+                "cancelledQuantity": 0
+              },
+              {
+                "orderId": "c",
+                "side": "sell",
+                "priceTicks": 100,
+                "acceptedSequence": 3,
+                "acceptedQuantity": 1,
+                "remainingQuantity": 0,
+                "executedQuantity": 1,
+                "cancelledQuantity": 0
+              }
+            ],
+            "bidPriority": [
+              "a",
+              "b"
+            ],
+            "askPriority": []
+          }
+        },
+        {
+          "command": {
+            "kind": "limit",
+            "orderId": "x",
+            "side": "buy",
+            "priceTicks": 100,
+            "quantity": 1
+          },
+          "result": {
+            "status": "REJECTED",
+            "reason": "RESTING_CAPACITY",
+            "acceptedSequence": 3,
+            "trades": []
+          },
+          "snapshot": {
+            "acceptedSequence": 3,
+            "acceptedQuantity": 8,
+            "executedQuantity": 1,
+            "cancelledQuantity": 0,
+            "executedNotional": 100,
+            "orders": [
+              {
+                "orderId": "a",
+                "side": "buy",
+                "priceTicks": 100,
+                "acceptedSequence": 1,
+                "acceptedQuantity": 3,
+                "remainingQuantity": 2,
+                "executedQuantity": 1,
+                "cancelledQuantity": 0
+              },
+              {
+                "orderId": "b",
+                "side": "buy",
+                "priceTicks": 100,
+                "acceptedSequence": 2,
+                "acceptedQuantity": 4,
+                "remainingQuantity": 4,
+                "executedQuantity": 0,
+                "cancelledQuantity": 0
+              },
+              {
+                "orderId": "c",
+                "side": "sell",
+                "priceTicks": 100,
+                "acceptedSequence": 3,
+                "acceptedQuantity": 1,
+                "remainingQuantity": 0,
+                "executedQuantity": 1,
+                "cancelledQuantity": 0
+              }
+            ],
+            "bidPriority": [
+              "a",
+              "b"
+            ],
+            "askPriority": []
+          }
+        },
+        {
+          "command": {
+            "kind": "limit",
+            "orderId": "d",
+            "side": "sell",
+            "priceTicks": 100,
+            "quantity": 4
+          },
+          "result": {
+            "status": "ACCEPTED",
+            "reason": "LIMIT",
+            "acceptedSequence": 4,
+            "trades": [
+              {
+                "tradeId": "4:1",
+                "makerId": "a",
+                "takerId": "d",
+                "priceTicks": 100,
+                "quantity": 2
+              },
+              {
+                "tradeId": "4:2",
+                "makerId": "b",
+                "takerId": "d",
+                "priceTicks": 100,
+                "quantity": 2
+              }
+            ]
+          },
+          "snapshot": {
+            "acceptedSequence": 4,
+            "acceptedQuantity": 12,
+            "executedQuantity": 5,
+            "cancelledQuantity": 0,
+            "executedNotional": 500,
+            "orders": [
+              {
+                "orderId": "a",
+                "side": "buy",
+                "priceTicks": 100,
+                "acceptedSequence": 1,
+                "acceptedQuantity": 3,
+                "remainingQuantity": 0,
+                "executedQuantity": 3,
+                "cancelledQuantity": 0
+              },
+              {
+                "orderId": "b",
+                "side": "buy",
+                "priceTicks": 100,
+                "acceptedSequence": 2,
+                "acceptedQuantity": 4,
+                "remainingQuantity": 2,
+                "executedQuantity": 2,
+                "cancelledQuantity": 0
+              },
+              {
+                "orderId": "c",
+                "side": "sell",
+                "priceTicks": 100,
+                "acceptedSequence": 3,
+                "acceptedQuantity": 1,
+                "remainingQuantity": 0,
+                "executedQuantity": 1,
+                "cancelledQuantity": 0
+              },
+              {
+                "orderId": "d",
+                "side": "sell",
+                "priceTicks": 100,
+                "acceptedSequence": 4,
+                "acceptedQuantity": 4,
+                "remainingQuantity": 0,
+                "executedQuantity": 4,
+                "cancelledQuantity": 0
+              }
+            ],
+            "bidPriority": [
+              "b"
+            ],
+            "askPriority": []
+          }
+        },
+        {
+          "command": {
+            "kind": "limit",
+            "orderId": "x",
+            "side": "buy",
+            "priceTicks": 100,
+            "quantity": 1
+          },
+          "result": {
+            "status": "ACCEPTED",
+            "reason": "LIMIT",
+            "acceptedSequence": 5,
+            "trades": []
+          },
+          "snapshot": {
+            "acceptedSequence": 5,
+            "acceptedQuantity": 13,
+            "executedQuantity": 5,
+            "cancelledQuantity": 0,
+            "executedNotional": 500,
+            "orders": [
+              {
+                "orderId": "a",
+                "side": "buy",
+                "priceTicks": 100,
+                "acceptedSequence": 1,
+                "acceptedQuantity": 3,
+                "remainingQuantity": 0,
+                "executedQuantity": 3,
+                "cancelledQuantity": 0
+              },
+              {
+                "orderId": "b",
+                "side": "buy",
+                "priceTicks": 100,
+                "acceptedSequence": 2,
+                "acceptedQuantity": 4,
+                "remainingQuantity": 2,
+                "executedQuantity": 2,
+                "cancelledQuantity": 0
+              },
+              {
+                "orderId": "c",
+                "side": "sell",
+                "priceTicks": 100,
+                "acceptedSequence": 3,
+                "acceptedQuantity": 1,
+                "remainingQuantity": 0,
+                "executedQuantity": 1,
+                "cancelledQuantity": 0
+              },
+              {
+                "orderId": "d",
+                "side": "sell",
+                "priceTicks": 100,
+                "acceptedSequence": 4,
+                "acceptedQuantity": 4,
+                "remainingQuantity": 0,
+                "executedQuantity": 4,
+                "cancelledQuantity": 0
+              },
+              {
+                "orderId": "x",
+                "side": "buy",
+                "priceTicks": 100,
+                "acceptedSequence": 5,
+                "acceptedQuantity": 1,
+                "remainingQuantity": 1,
+                "executedQuantity": 0,
+                "cancelledQuantity": 0
+              }
+            ],
+            "bidPriority": [
+              "b",
+              "x"
+            ],
+            "askPriority": []
+          }
+        },
+        {
+          "command": {
+            "kind": "limit",
+            "orderId": "t",
+            "side": "sell",
+            "priceTicks": 100,
+            "quantity": 3
+          },
+          "result": {
+            "status": "ACCEPTED",
+            "reason": "LIMIT",
+            "acceptedSequence": 6,
+            "trades": [
+              {
+                "tradeId": "6:1",
+                "makerId": "b",
+                "takerId": "t",
+                "priceTicks": 100,
+                "quantity": 2
+              },
+              {
+                "tradeId": "6:2",
+                "makerId": "x",
+                "takerId": "t",
+                "priceTicks": 100,
+                "quantity": 1
+              }
+            ]
+          },
+          "snapshot": {
+            "acceptedSequence": 6,
+            "acceptedQuantity": 16,
+            "executedQuantity": 8,
+            "cancelledQuantity": 0,
+            "executedNotional": 800,
+            "orders": [
+              {
+                "orderId": "a",
+                "side": "buy",
+                "priceTicks": 100,
+                "acceptedSequence": 1,
+                "acceptedQuantity": 3,
+                "remainingQuantity": 0,
+                "executedQuantity": 3,
+                "cancelledQuantity": 0
+              },
+              {
+                "orderId": "b",
+                "side": "buy",
+                "priceTicks": 100,
+                "acceptedSequence": 2,
+                "acceptedQuantity": 4,
+                "remainingQuantity": 0,
+                "executedQuantity": 4,
+                "cancelledQuantity": 0
+              },
+              {
+                "orderId": "c",
+                "side": "sell",
+                "priceTicks": 100,
+                "acceptedSequence": 3,
+                "acceptedQuantity": 1,
+                "remainingQuantity": 0,
+                "executedQuantity": 1,
+                "cancelledQuantity": 0
+              },
+              {
+                "orderId": "d",
+                "side": "sell",
+                "priceTicks": 100,
+                "acceptedSequence": 4,
+                "acceptedQuantity": 4,
+                "remainingQuantity": 0,
+                "executedQuantity": 4,
+                "cancelledQuantity": 0
+              },
+              {
+                "orderId": "t",
+                "side": "sell",
+                "priceTicks": 100,
+                "acceptedSequence": 6,
+                "acceptedQuantity": 3,
+                "remainingQuantity": 0,
+                "executedQuantity": 3,
+                "cancelledQuantity": 0
+              },
+              {
+                "orderId": "x",
+                "side": "buy",
+                "priceTicks": 100,
+                "acceptedSequence": 5,
+                "acceptedQuantity": 1,
+                "remainingQuantity": 0,
+                "executedQuantity": 1,
+                "cancelledQuantity": 0
+              }
+            ],
+            "bidPriority": [],
+            "askPriority": []
+          }
+        }
+      ]
+    }
+  ]
+}

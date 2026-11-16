@@ -1,3 +1,8 @@
+# v0.1.0-preview.2 - source preparation only
+
+Not published or runtime-admitted. Twelve manual finite capacity goldens, two-engine replay/rejection erasure and independent three-mode Python verification are source-prepared. Matching algorithms, production CLI and matching-v1 semantics remain unchanged. SDK10.0.404/runtime10.0.15 are proposed servicing pins; xUnit4.0.3 remains test-only. No tests/build/package execution is claimed by this note.
+
+Packaging intentionally fails closed until actual10.0.15 raw archives, normalized NuGet identities, original notices and append-only NOTICE-SOURCES rows are vetted under the runtime attachment. Existing10.0.14 rows and all preview.1 signatures/assets remain unchanged. SDK11 is not a dependency. Current Linux/Windows consumer identities, real kernel caps, controller denials, exact-commit CI and six signed downloadable assets remain delivery gates.
 # v0.1.0-preview.1 - Price-Time Matching Core
 
 Published packages require exact-commit native build/test/package jobs, signed tag/checksums and actual downloadable archive verification. A prepared pipeline or local candidate is separate evidence.

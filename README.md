@@ -69,7 +69,7 @@ One caller owns an instance; it is not thread-safe. Replace, market orders, self
 
 ## Build and review
 
-Pinned SDK 10.0.403, runtime 10.0.14, C# 14; application uses BCL only. xUnit v3 4.0.3 is test-only. No preview, unsafe code, AOT, services, credentials or package install is needed for the self-contained CLI.
+Source pin: SDK 10.0.404, runtime 10.0.15, C# 14; application uses BCL only. xUnit v3 4.0.3 is test-only. No preview, unsafe code, AOT, services, credentials or package install is needed for the self-contained CLI.
 
 ```sh
 dotnet restore PriceTimeMatching.slnx --locked-mode
@@ -86,3 +86,9 @@ See [contract](docs/CONTRACT.md), [decisions](docs/ADR.md), [runbook](docs/RUNBO
 The current source expands compact C# layout for review. The published preview links identify its frozen runtime release. Formatting preserves complete syntax, token text and values, comments and directives; it does not introduce a runtime behavior or performance claim.
 
 To reproduce a published package, use its exact original runtime source: [v0.1.0-preview.1 source](https://github.com/pouriajamali/price-time-matching-core/tree/e17d9f9aacdbca9a20d316ae08afb048842a22c6) (`e17d9f9aacdbca9a20d316ae08afb048842a22c6`). Later `main` layout is reviewed separately from those frozen release commits.
+
+## Capacity model source candidate
+
+The source candidate adds twelve literal small-limit histories and their independent Python checks: resting rejection/retry, full-book fills, slot reuse, lifetime IDs after fill/cancel, and FIFO through rejection. Tests compare every complete result and snapshot, repeat exact bytes, and erase rejected commands when comparing accepted projections. Existing matching and CLI logic is unchanged.
+
+New source is prepared for preview.2; it has not passed runtime admission or tests yet. Published preview.1 links above remain the immutable prior release. Current source pins .NET10 servicing10.0.15; existing binaries contain10.0.14. See docs/RUNBOOK.md for the bounded reproduction route and docs/RELEASE.md for candidate limitations.

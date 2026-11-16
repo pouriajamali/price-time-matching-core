@@ -12,7 +12,10 @@ def state_hash(state):
     for o in state['orders']:text+='|'.join(str(o[k]) for k in ['orderId','side','priceTicks','acceptedSequence','acceptedQuantity','remainingQuantity','executedQuantity','cancelledQuantity'])+'\n'
     return hashlib.sha256(text.encode('ascii')).hexdigest()
 class Model:
-    def __init__(self):self.orders={};self.seq=0;self.accepted=0;self.executed=0;self.cancelled=0;self.notional=0
+    def __init__(self,resting=10000,lifetime_ids=100000):
+        require(type(resting)==int and type(lifetime_ids)==int and 1<=resting<=10000 and resting<=lifetime_ids<=100000,'Invalid bounded limits')
+        self.resting=resting;self.lifetime_ids=lifetime_ids
+        self.orders={};self.seq=0;self.accepted=0;self.executed=0;self.cancelled=0;self.notional=0
     def snapshot(self):
         orders=sorted(self.orders.values(),key=lambda o:o['orderId']);rest=[o for o in orders if o['remainingQuantity']]
         bids=sorted((o for o in rest if o['side']=='buy'),key=lambda o:(-o['priceTicks'],o['acceptedSequence']))
@@ -35,7 +38,7 @@ class Model:
             self.cancelled+=old['remainingQuantity'];old['cancelledQuantity']+=old['remainingQuantity'];old['remainingQuantity']=0;self.seq+=1
             return dict(status='ACCEPTED',reason='CANCEL',acceptedSequence=self.seq,trades=[])
         if identity in self.orders:return reject('DUPLICATE_ID')
-        if len(self.orders)==100000:return reject('LIFETIME_ID_CAPACITY')
+        if len(self.orders)==self.lifetime_ids:return reject('LIFETIME_ID_CAPACITY')
         # Independent scan selects one best candidate repeatedly from a copied plain dictionary.
         import copy
         updated=copy.deepcopy(self.orders);remaining=quantity;trades=[];executed=self.executed;notional=self.notional
@@ -46,7 +49,7 @@ class Model:
             amount=min(best['remainingQuantity'],remaining);best['remainingQuantity']-=amount;best['executedQuantity']+=amount;remaining-=amount;executed+=amount;notional+=amount*best['priceTicks']
             trades.append(dict(tradeId=str(self.seq+1)+':'+str(len(trades)+1),makerId=best['orderId'],takerId=identity,priceTicks=best['priceTicks'],quantity=amount))
         if max(self.accepted+quantity,executed,notional)>MAX:return reject('ARITHMETIC_EXHAUSTED')
-        if sum(o['remainingQuantity']>0 for o in updated.values())+(remaining>0)>10000:return reject('RESTING_CAPACITY')
+        if sum(o['remainingQuantity']>0 for o in updated.values())+(remaining>0)>self.resting:return reject('RESTING_CAPACITY')
         updated[identity]=dict(orderId=identity,side=side,priceTicks=price,acceptedSequence=self.seq+1,acceptedQuantity=quantity,remainingQuantity=remaining,executedQuantity=quantity-remaining,cancelledQuantity=0)
         self.orders=updated;self.seq+=1;self.accepted+=quantity;self.executed=executed;self.notional=notional
         return dict(status='ACCEPTED',reason='LIMIT',acceptedSequence=self.seq,trades=trades)
