@@ -22,6 +22,7 @@ import time
 import urllib.request
 import xml.etree.ElementTree as ET
 import zipfile
+import zlib
 
 REPOSITORY = "pouriajamali/price-time-matching-core"
 SHARED = {"sdk10_hosted_inputs.py": "a0a71989c7629314b134955b2d697939d27059150181168935d998fcf1404a5e",
@@ -472,7 +473,7 @@ def linux_parent(ctx, argv):
         return result
 
 
-def bounded_get(ctx, url, destination, limit, total, expected_size=None, expected_sha512=None):
+def bounded_get(ctx, url, destination, limit, total, expected_size=None, expected_sha512=None, response_metadata=None):
     need(url.startswith("https://api.nuget.org/v3-flatcontainer/") or url.startswith("https://api.nuget.org/v3/"), "UNEXPECTED_NUGET_ORIGIN")
     cap = min(60, ctx.get("nugetAcquisitionDeadlineMono", time.monotonic() + 60) - time.monotonic())
     need(cap > 0, "NUGET_ACQUISITION_DEADLINE")
@@ -484,15 +485,128 @@ def bounded_get(ctx, url, destination, limit, total, expected_size=None, expecte
     opener = urllib.request.build_opener(DenyRedirect())
     request = urllib.request.Request(url, headers={"Accept-Encoding": "identity", "User-Agent": "Matching10-BoundedInput/1"})
     with opener.open(request, timeout=min(30, cap, remaining(ctx))) as response, Path(destination).open("xb") as out:
+        if response_metadata is not None:
+            response_metadata.update(httpStatus=int(response.status), rawBytes=0, rawSHA256=h256.hexdigest(), rawComplete=False)
         need(response.status == 200 and response.geturl() == url, "NUGET_REDIRECT_OR_STATUS")
+        if response_metadata is not None:
+            encodings = response.headers.get_all("Content-Encoding", [])
+            lengths = response.headers.get_all("Content-Length", [])
+            need(len(encodings) <= 1 and len(lengths) <= 1, "METADATA_DUPLICATE_ENCODING_OR_LENGTH")
+            encoding = encodings[0].strip().lower() if encodings else "identity"
+            need(len(encoding) <= 64, "METADATA_ENCODING_HEADER_CAP")
+            response_metadata["contentEncoding"] = encoding if encoding in ("identity", "gzip") else "unsupported"
+            response_metadata["encodingHeaderPresent"] = bool(encodings)
+            need(encoding in ("identity", "gzip"), "METADATA_CONTENT_ENCODING_UNSUPPORTED")
+            declared = lengths[0].strip() if lengths else None
+            need(declared is None or re.fullmatch(r"[0-9]{1,12}", declared), "METADATA_CONTENT_LENGTH_INVALID")
+            response_metadata["declaredContentLength"] = int(declared) if declared is not None else None
+            need(declared is None or int(declared) <= limit, "METADATA_RAW_CONTENT_LENGTH_CAP")
         for chunk in iter(lambda: response.read(65536), b""):
             count += len(chunk); total[0] += len(chunk)
             need(count <= limit and total[0] <= 536870912, "INPUT_TRANSPORT_BYTES")
             budget(ctx); out.write(chunk); h256.update(chunk); h512.update(chunk)
+            if response_metadata is not None:
+                response_metadata.update(rawBytes=count, rawSHA256=h256.hexdigest())
         out.flush(); os.fsync(out.fileno())
     need(expected_size is None or count == expected_size, "NUGET_RAW_SIZE")
     need(expected_sha512 is None or h512.hexdigest() == expected_sha512, "NUGET_RAW_SHA512")
+    if response_metadata is not None:
+        declared = response_metadata.get("declaredContentLength")
+        need(declared is None or declared == count, "METADATA_CONTENT_LENGTH_MISMATCH")
+        response_metadata["rawComplete"] = True
     return {"url": url, "bytes": count, "sha256": h256.hexdigest(), "sha512": h512.hexdigest()}
+
+
+def metadata_transport_receipt(ctx, entry):
+    records = ctx.setdefault("metadataTransportRecords", [])
+    if not any(item is entry for item in records):
+        need(len(records) < 10, "METADATA_RECEIPT_PHASE_CAP")
+        records.append(entry)
+    proof = {"schema": "matching10/metadata-transport/v1", "source": ctx["binding"]["source"],
+             "rid": ctx["rid"], "scope": "Bounded JSON transport only; no advisory or package admission", "records": records}
+    need(len(json.dumps(proof).encode("utf-8")) <= 65536, "METADATA_RECEIPT_BYTES")
+    path = Path(ctx["runRoot"]) / "advisory-transport.json"
+    temporary = path.with_suffix(".new")
+    save(temporary, proof); os.replace(temporary, path)
+
+
+def decode_metadata_bytes(ctx, wire, destination, encoding, decoded_limit, total, entry):
+    # Exactly one RFC1952 stream. zlib validates its CRC32 and ISIZE trailer; never auto-detect.
+    need(encoding in ("identity", "gzip"), "METADATA_CONTENT_ENCODING_UNSUPPORTED")
+    decoded = 0; digest = hashlib.sha256(); complete = False
+    try:
+        with Path(wire).open("rb") as source, Path(destination).open("xb") as output:
+            magic = source.read(2); source.seek(0)
+            need((magic == b"\x1f\x8b") == (encoding == "gzip"), "METADATA_ENCODING_HEADER_MISMATCH")
+            decoder = zlib.decompressobj(16 + zlib.MAX_WBITS) if encoding == "gzip" else None
+            for raw in iter(lambda: source.read(65536), b""):
+                budget(ctx)
+                pending = raw
+                while pending:
+                    if decoder is not None:
+                        need(not decoder.eof, "METADATA_GZIP_TRAILING_OR_MULTIMEMBER")
+                        try:
+                            chunk = decoder.decompress(pending, max(1, decoded_limit - decoded + 1))
+                        except zlib.error:
+                            raise Failure("METADATA_GZIP_CRC_OR_FORMAT_INVALID") from None
+                        need(not decoder.unused_data, "METADATA_GZIP_TRAILING_OR_MULTIMEMBER")
+                        pending = decoder.unconsumed_tail
+                    else:
+                        chunk = pending; pending = b""
+                    need(decoded + len(chunk) <= decoded_limit, "METADATA_DECODED_BYTES_CAP")
+                    total[0] += len(chunk)
+                    need(total[0] <= 536870912, "INPUT_TRANSPORT_BYTES")
+                    budget(ctx); output.write(chunk); digest.update(chunk); decoded += len(chunk)
+                if decoder is not None and decoder.eof:
+                    need(not source.read(1), "METADATA_GZIP_TRAILING_OR_MULTIMEMBER")
+                    break
+            if decoder is not None:
+                need(decoder.eof and not decoder.unused_data and not decoder.unconsumed_tail, "METADATA_GZIP_TRUNCATED")
+            output.flush(); os.fsync(output.fileno())
+        budget(ctx, True); complete = True
+    finally:
+        entry.update(decodedBytes=decoded, decodedSHA256=digest.hexdigest(), decodedComplete=complete)
+
+
+def bounded_json_get(ctx, url, destination, limit, total, phase):
+    need(phase in ("service-index", "vulnerability-index") or re.fullmatch(r"vulnerability-page-[0-7]", phase), "METADATA_PHASE_IDENTITY")
+    entry = {"phase": phase, "status": "STARTED", "contentEncoding": "unknown", "rawBytes": 0,
+             "rawSHA256": None, "rawComplete": False, "decodedBytes": 0, "decodedSHA256": None, "decodedComplete": False,
+             "combinedByteLimit": limit, "parseAttempted": False}
+    response_metadata = {}
+    try:
+        metadata_transport_receipt(ctx, entry)
+        wire = Path(destination).with_suffix(Path(destination).suffix + ".wire")
+        raw = bounded_get(ctx, url, wire, limit, total, response_metadata=response_metadata)
+        entry.update(response_metadata)
+        decoded_limit = limit - raw["bytes"]
+        need(decoded_limit >= 0, "METADATA_COMBINED_BYTES_CAP")
+        decode_metadata_bytes(ctx, wire, destination, entry["contentEncoding"], decoded_limit, total, entry)
+        entry["status"] = "DECODED_BEFORE_PARSE"
+        metadata_transport_receipt(ctx, entry)
+        # A persisted raw+decoded hash/encoding/phase receipt exists before any UTF8/JSON parse.
+        entry["parseAttempted"] = True
+        try:
+            data = load(destination, decoded_limit)
+        except UnicodeDecodeError:
+            raise Failure("METADATA_UTF8_INVALID") from None
+        except json.JSONDecodeError:
+            raise Failure("METADATA_JSON_INVALID") from None
+        budget(ctx, True)
+        entry["status"] = "JSON_PARSED_NOT_ADVISORY_ADMISSION"
+        metadata_transport_receipt(ctx, entry)
+        return {"url": raw["url"], "bytes": raw["bytes"] + entry["decodedBytes"], "rawBytes": raw["bytes"],
+                "decodedBytes": entry["decodedBytes"], "rawSHA256": raw["sha256"], "decodedSHA256": entry["decodedSHA256"],
+                "contentEncoding": entry["contentEncoding"], "accounting": "raw-plus-decoded"}, data
+    except Exception as failure:
+        entry.update(response_metadata)
+        cause = getattr(failure, "cause", "METADATA_TRANSPORT_EXCEPTION")
+        entry.update(status="FAILED", failureCause=cause if re.fullmatch(r"[A-Z0-9_]{1,80}", cause) else "METADATA_TRANSPORT_EXCEPTION")
+        try:
+            metadata_transport_receipt(ctx, entry)
+        except Exception:
+            pass  # Diagnostic write failure must not replace the original transport/parse/cap cause.
+        raise
 
 
 def safe_package(raw, spec, notice_root):
@@ -573,23 +687,37 @@ def in_range(version, text):
             and (not high or stable_compare(version, high) < 0 or (text[-1] == "]" and stable_compare(version, high) == 0)))
 
 
+def vulnerability_page_entries(data):
+    if type(data) is list:
+        need(len(data) == 0, "VULNERABILITY_PAGE_SHAPE")
+        return {}  # The documented exact empty array only; never skip a nonempty array.
+    need(type(data) is dict and all(type(key) is str and type(issues) is list for key, issues in data.items()),
+         "VULNERABILITY_PAGE_SHAPE")
+    need(all(type(issue) is dict and type(issue.get("versions")) is str and type(issue.get("url", "")) is str
+             for issues in data.values() for issue in issues), "VULNERABILITY_PAGE_SHAPE")
+    return data
+
+
 def advisory_guard(ctx, specs, total):
     root = Path(ctx["runRoot"]) / "advisory"; root.mkdir()
     index_file = root / "service.json"
-    records = [bounded_get(ctx, "https://api.nuget.org/v3/index.json", index_file, 2097152, total)]
-    resources = [x["@id"] for x in load(index_file)["resources"] if str(x["@type"]).startswith("VulnerabilityInfo/")]
+    service_record, service = bounded_json_get(ctx, "https://api.nuget.org/v3/index.json", index_file, 2097152, total, "service-index")
+    records = [service_record]
+    resources = [x["@id"] for x in service["resources"] if str(x["@type"]).startswith("VulnerabilityInfo/")]
     need(len(set(resources)) == 1, "VULNERABILITY_SOURCE_MISSING_OR_AMBIGUOUS")
-    index = root / "index.json"; records.append(bounded_get(ctx, resources[0], index, 2097152, total))
-    pages = load(index); need(isinstance(pages, list) and 1 <= len(pages) <= 8, "VULNERABILITY_PAGE_PARTITION")
+    index = root / "index.json"
+    index_record, pages = bounded_json_get(ctx, resources[0], index, 2097152, total, "vulnerability-index")
+    records.append(index_record)
+    need(isinstance(pages, list) and 1 <= len(pages) <= 8, "VULNERABILITY_PAGE_PARTITION")
     selected = {x["id"].lower(): x["version"] for x in specs}; advisory_bytes = 0
     for number, page in enumerate(pages):
         url = page["@id"]
         need(url.startswith("https://api.nuget.org/v3/vulnerabilities/"), "ADVISORY_ORIGIN")
         path = root / (str(number) + ".json")
-        record = bounded_get(ctx, url, path, 33554432 - advisory_bytes, total)
+        record, data = bounded_json_get(ctx, url, path, 33554432 - advisory_bytes, total, "vulnerability-page-" + str(number))
         advisory_bytes += record["bytes"]; need(advisory_bytes <= 33554432, "ADVISORY_BYTE_CAP")
         record["updated"] = page.get("@updated"); records.append(record)
-        data = load(path, 33554432)
+        data = vulnerability_page_entries(data)
         for identity, version in selected.items():
             for issue in data.get(identity, []):
                 need(not in_range(version, issue["versions"]), "CURRENT_ADVISORY_MATCH", identity + " " + issue["versions"] + " " + issue.get("url", ""))
@@ -938,7 +1066,7 @@ def export_evidence(ctx):
     target = Path(ctx["workspace"]) / "artifacts/hosted-cap-proof"
     target.mkdir(parents=True, exist_ok=True)
     total = 0
-    for name in ("nuget-signature-diagnostic.json", "host-observation.json", "caps.json", "held-ready.json", "release.json", "package-admission.json", "selected-advisory.json", "denial-proof.json", "child-result.json", "parent-terminal.json"):
+    for name in ("advisory-transport.json", "nuget-signature-diagnostic.json", "host-observation.json", "caps.json", "held-ready.json", "release.json", "package-admission.json", "selected-advisory.json", "denial-proof.json", "child-result.json", "parent-terminal.json"):
         source = Path(ctx["runRoot"]) / name
         if source.exists():
             total += source.stat().st_size; need(total <= 2097152, "INCREMENTAL_PROOF_CAP")
