@@ -513,6 +513,11 @@ def safe_package(raw, spec, notice_root):
             names.add(key)
         nuspecs = [x for x in infos if x.filename.lower().endswith(".nuspec")]
         need(len(nuspecs) == 1 and nuspecs[0].file_size <= 1048576 and ".signature.p7s" in names, "SIGNED_NUSPEC_MEMBERSHIP")
+        signature_member = next((x for x in infos if x.filename == ".signature.p7s"), None)
+        need(signature_member is not None and signature_member.file_size <= 131072, "SIGNATURE_MEMBER_IDENTITY_OR_CAP")
+        signature_hash = hashlib.sha256(archive.read(signature_member)).hexdigest()
+        if not spec["implicit"]:
+            need(signature_hash == spec["signatureFileSHA256"], "TEST_SIGNER_SIGNATURE_FILE_IDENTITY", spec["id"])
         xml = archive.read(nuspecs[0])
         need(b"<!DOCTYPE" not in xml.upper() and b"<!ENTITY" not in xml.upper(), "NUSPEC_DTD")
         root = ET.fromstring(xml)
@@ -536,7 +541,7 @@ def safe_package(raw, spec, notice_root):
         if spec["implicit"]:
             need(notices and any(PurePosixPath(x["member"]).name.upper().startswith("LICENSE") for x in notices), "IMPLICIT_FULL_LICENSE_MISSING")
         # Build-only packages may carry a signed SPDX expression without a full-text member.
-        return {"id": spec["id"], "version": spec["version"], "memberCount": len(infos),
+        return {"id": spec["id"], "version": spec["version"], "signatureFileSHA256": signature_hash, "memberCount": len(infos),
                 "expandedBytes": sum(x.file_size for x in infos), "nuspecSHA256": hashlib.sha256(xml).hexdigest(),
                 "license": {"kind": license_kind, "value": license_element.text},
                 "copyright": fields["copyright"].text if "copyright" in fields else None,
@@ -594,6 +599,19 @@ def advisory_guard(ctx, specs, total):
     return proof
 
 
+def test_repository_pin(identity, version, raw_sha512, normalized, signature_file_sha256):
+    spec = TEST_PACKAGES.get(identity.lower())
+    need(spec is not None and spec["version"] == version, "TEST_SIGNER_PACKAGE_IDENTITY", identity)
+    need(raw_sha512 == spec["rawSHA512"], "TEST_SIGNER_RAW_IDENTITY", identity)
+    need(normalized == spec["normalized"], "TEST_SIGNER_NORMALIZED_IDENTITY", identity)
+    need(signature_file_sha256 == spec["signatureFileSHA256"], "TEST_SIGNER_SIGNATURE_FILE_IDENTITY", identity)
+    pin = spec["repositoryCertificate"]
+    need(pin is not None and re.fullmatch(r"[0-9A-F]{64}", pin)
+         and spec["repositoryProvenance"]["state"] == "EXACT_RETAINED_CMS_DATA_AND_COORDINATOR_OFFICIAL_CERT_REFERENCE",
+         "TEST_SIGNER_PROVENANCE_UNKNOWN", identity)
+    return pin
+
+
 def signature_observations(text, selected, exit_code):
     # Pure bounded parser: emit only expected package identities, enums and validated hashes.
     need(len(selected) <= 24 and len(text) <= 524288, "SIGNATURE_DIAGNOSTIC_INPUT_CAP")
@@ -627,18 +645,22 @@ def signature_observations(text, selected, exit_code):
                     normalized = None
             except ValueError:
                 normalized = None
-        if len(bodies) != 1 or unmatched or kinds.count("repository") > 1 or not kinds:
+        expected_repository = REPO_CERT if spec["implicit"] else spec.get("repositoryCertificate")
+        if expected_repository is None:
+            category = "PACKAGE_SIGNER_PROVENANCE_UNKNOWN"
+        elif len(bodies) != 1 or unmatched or kinds.count("repository") > 1 or not kinds:
             category = "PARSER_PARTITION_UNKNOWN"
         elif "repository" not in kinds:
             category = "ABSENT_REPOSITORY_SECTION"
         elif not fingerprints["repository"]:
             category = "PARSER_FINGERPRINT_FIELD_UNKNOWN"
-        elif REPO_CERT not in fingerprints["repository"]:
+        elif expected_repository not in fingerprints["repository"]:
             category = "OBSERVED_REPOSITORY_CERT_MISMATCH"
         else:
             category = "OBSERVED_REPOSITORY_PIN_MATCH"
         rows.append({"id": spec["id"], "version": spec["version"], "implicit": spec["implicit"],
             "rawSHA512Expected": spec["rawSHA512"], "normalizedContentHashExpected": spec["normalized"],
+            "expectedRepositoryCertificate": expected_repository, "signatureFileSHA256Expected": spec.get("signatureFileSHA256"),
             "normalizedContentHashObserved": normalized, "packageBlockCount": len(bodies),
             "signatureKinds": kinds[:8], "observedFingerprintHexBySection": fingerprints,
             "repositoryObservation": category, "verifyExitCode": exit_code})
@@ -663,6 +685,7 @@ def signature_diagnostic(ctx, selected, inspected, command_failure=None):
         row["rawObservedBytes"] = raw["bytes"]
         row["rawSHA256Observed"] = raw["sha256"]
         row["rawSHA512Observed"] = raw["sha512"]
+        row["signatureFileSHA256Observed"] = inspected[row["id"].lower()].get("signatureFileSHA256")
     report = {"schema": "matching10/nuget-signature-diagnostic/v2", "status": "OBSERVABILITY_ONLY_NOT_ADMISSION",
         "source": ctx["binding"]["source"], "rid": ctx["rid"],
         "controllerSHA256": ctx["binding"]["controllerSHA256"], "payloadSHA256": ctx["binding"]["payloadSHA256"],
@@ -670,9 +693,9 @@ def signature_diagnostic(ctx, selected, inspected, command_failure=None):
         "inputSHA256": hashlib.sha256(data).hexdigest() if complete else None,
         "commandReturnedSuccessfully": command_failure is None,
         "SDKLaunchAttempts": ctx["SDKLaunchAttempts"], "SDKProcessesStartedByController": ctx["SDKProcessesStarted"],
-        "expectedRepositoryCertificate": REPO_CERT, "expectedImplicitAuthorCertificate": MS_CERT,
+        "implicitRepositoryCertificate": REPO_CERT, "expectedImplicitAuthorCertificate": MS_CERT,
         **observation, "historicalFailureCause": "UNKNOWN: prior actual verify output was not retained",
-        "policy": "All raw/normalized/signature pins unchanged. Structured public package/hash/kind/exit observations only; no raw stdout/stderr, path, query, environment or inferred admission"}
+        "policy": "Exact per-test-package pins bind id/version/raw/normalized/CMS identity; implicit pins unchanged. Structured public package/hash/kind/exit observations only; no raw stdout/stderr, path, query, environment or inferred admission"}
     need(len(json.dumps(report).encode("utf-8")) <= 131072, "SIGNATURE_DIAGNOSTIC_JSON_CAP")
     save(Path(ctx["runRoot"]) / "nuget-signature-diagnostic.json", report)
     return report
@@ -751,13 +774,15 @@ def input_policy(ctx, sdk, sdk_receipt):
             need(hashes[0] == spec["normalized"], "NORMALIZED_HASH_MISMATCH", identity)
         signatures = {kind.lower(): section for kind, section in re.findall(
             r"Signature type:\s*(Author|Repository)(.*?)(?=Signature type:|\Z)", text, re.S | re.I)}
+        expected_repository = REPO_CERT if spec["implicit"] else test_repository_pin(
+            identity, spec["version"], inspected[identity]["raw"]["sha512"], hashes[0], inspected[identity]["signatureFileSHA256"])
         need("repository" in signatures, "NUGET_REPOSITORY_SIGNATURE_ABSENT", identity)
-        need(REPO_CERT in re.sub(r"\s", "", signatures["repository"]).upper(), "NUGET_REPOSITORY_CERT_MISMATCH", identity)
+        need(expected_repository in re.sub(r"\s", "", signatures["repository"]).upper(), "NUGET_REPOSITORY_CERT_MISMATCH", identity)
         if spec["implicit"]:
             need("author" in signatures and MS_CERT in re.sub(r"\s", "", signatures["author"]).upper(), "MICROSOFT_IMPLICIT_SIGNER", identity)
         normalized[identity] = hashes[0]
         inspected[identity]["normalizedContentHash"] = hashes[0]
-        inspected[identity]["signaturePolicy"] = {"exitCode": 0, "repositoryCertificate": REPO_CERT,
+        inspected[identity]["signaturePolicy"] = {"exitCode": 0, "repositoryCertificate": expected_repository,
                                                    "authorCertificate": MS_CERT if spec["implicit"] else "Exact raw/lock plus NuGetrepository signature policy"}
     advisory_guard(ctx, selected, total)
     command(ctx, [sdk, "restore", "PriceTimeMatching.slnx", "--locked-mode", "--configfile", config,
@@ -990,7 +1015,484 @@ def main():
                           "SDKProcessesStarted": 0 if args.preflight_only else "SEE_ACTUAL_CHILD_RECEIPT"}))
         return 64 if args.preflight_only else 1
 
-TEST_PACKAGES = json.loads(r'''{"xunit.v3":{"rawSHA512":"72910d8c1348d6122b4c9ac373818ac7ce7df1aed3d578077fc03dd533844a3ed10929eacaec9c2e10d884a79d08ab9d7ae6074bca5954faea4113662b459803","id":"xunit.v3","bytes":32099,"rawSHA256":"cc54f2fa01f64df2c7e25cc826e81db08f9e1d9ebce2f41fd22adcb11d39eb8e","version":"4.0.3","normalized":"GxBopTuV5aU7NS0iE1P6I6YCQscIAP0iIyyZqZhs1c8Ry3cdiOouEtQQpX8cA7E1gEnKGRMNA+7NlhBy13AEyg==","implicit":false},"microsoft.applicationinsights":{"rawSHA512":"dd497bfad0c65e54a4f78d2a1644f3d0854d4cd01dd83ba506f8d5d53635e28152c7c13210dd5dd3985780aab146a7620de3ebaead8ef12c6f87088676c2157f","id":"microsoft.applicationinsights","bytes":1737910,"rawSHA256":"e6c7f76e0ec26598c7b1e2be1777e839c84486655e8a878fc4c655bd2e918dbd","version":"2.23.0","normalized":"nWArUZTdU7iqZLycLKWe0TDms48KKGE6pONH2terYNa8REXiqixrMOkf1sk5DHGMaUTqONU2YkS4SAXBhLStgw==","implicit":false},"microsoft.bcl.asyncinterfaces":{"rawSHA512":"221a05a0c910f7a87b620d8f3831ed392b4eb95d112bee274d35f27009ad2a26445de9d7cd235fe6fb4a03f2550874bda3be3dddd96edaf9c0852a9c23d7b099","id":"microsoft.bcl.asyncinterfaces","bytes":76354,"rawSHA256":"e3df87fe2170a7e01f0880af59caa8f6eb380b3c40a4f282dfb43912aaf0f895","version":"6.0.0","normalized":"UcSjPsst+DfAdJGVDsu346FX0ci0ah+lw3WRtn18NUwEqRt70HaOQ7lI72vy3+1LxtqI3T5GWwV39rQSrCzAeg==","implicit":false},"microsoft.testing.extensions.telemetry":{"rawSHA512":"9a372a18499687500c9f33fd324450d7f6fc96f78ac86be08b7f39f5bc2f7cd9137eb6513550df82d2b6be4d03cddbf82dc4873cf098e4d3bd0d38bf8338c99c","id":"microsoft.testing.extensions.telemetry","bytes":517775,"rawSHA256":"fdc508edfbba0741f92d0c298b4688129c200b979ae1d057debc5f88565c458a","version":"2.5.2","normalized":"j1XGKCBrmfNm0tmotMa05GlqVtb2cW5UaMkKCFHPyyFHz5rdOy7TD0SVXnZJ+QMrjPAHjRoRqn5qcsUjICSWwg==","implicit":false},"microsoft.testing.extensions.trxreport.abstractions":{"rawSHA512":"74fbdeaf0f237c21dd5eb8edbf5dffa5b7c46625d2d2b29eb26e172d19002e31b476aa8a51dd5bfa560ea241830ec6b710974fd63f719950a16cc741b2e6ac28","id":"microsoft.testing.extensions.trxreport.abstractions","bytes":114290,"rawSHA256":"915a82acf3d3af17ca0ff856adb8a536d01a134a443a462946d9564a08b22e9d","version":"2.5.2","normalized":"+xTIaIU9H44GxOyjrfieMSZnxltGvleA3jCRtdEAzlXKb85pMmVYMLUv2JS8KwD+U2wQHUgvy5YfQfWoPEfVdQ==","implicit":false},"microsoft.testing.platform":{"rawSHA512":"e8aa808d280c15589f50e11bb9191bd5b81a797ed7d7c24286933ef8d596d6e001a5c9b9665712de50a7f4454cbd35faf84d8f610316840313efe41e1ad1fd7a","id":"microsoft.testing.platform","bytes":3792942,"rawSHA256":"9ac2d8d4ff97a506eeba446ba1bc5b7a77e882d1823fb45373a60dfd0b7d2463","version":"2.5.2","normalized":"ocX0rgGY78dKfmZlZe4hB0/dvlh7wJgUAWS+KfwrqxB9DpNsjshnne9dppCKnFNEOkX4QYsrdUU++NInFPiCBw==","implicit":false},"microsoft.testing.platform.msbuild":{"rawSHA512":"08afa4b6a9a8709b22ec1f8b35a56c859c6fec269c561e0dca3eedbec8eec6615e6b9d8e7739b127b115eed705c8809fa92ab13e643595e9a85ff6dcecd39174","id":"microsoft.testing.platform.msbuild","bytes":2279673,"rawSHA256":"04616888e7eee8e5e6e042354eeb41f5ad34d60bfb015681596a372a0f904e64","version":"2.5.2","normalized":"Jey2v0hd7WHHa7pr6MRNKtA07FvxcOMTCtIhTI7uBZ/qR5m1mgCVCo5L1rtVAtqgMhGA205bUwq9+is4LiCzpw==","implicit":false},"microsoft.win32.registry":{"rawSHA512":"471e66567ce59cc86475aece7815d05261264ce114e0c1688ba2551dd51494901fa72dd7a8f74f8e8f0f3dba74af8595f177552f3c06abb4bfce76692197076e","id":"microsoft.win32.registry","bytes":354731,"rawSHA256":"f64ca53c67ca65ce7cc85a8d29aefbb2da2672836731e1115e8cd62730dc5080","version":"5.0.0","normalized":"dDoKi0PnDz31yAyETfRntsLArTlVAVzUzCIvvEDsDsucrl33Dl8pIJG06ePTJTI3tGpeyHS9Cq7Foc/s4EeKcg==","implicit":false},"system.security.accesscontrol":{"rawSHA512":"e1beba70b45f8cc5ae06fdecf365f0bb5b58b9af6d7c79accfef15b5a7c7bbef65e10cf9f299418eb413aac86ffefaa0eab9d91650ce77cc398d390f0597ed42","id":"system.security.accesscontrol","bytes":235270,"rawSHA256":"462e26f796417e8a4350655a85bbd4233b94cbd0f7150c1c5e9acfd88e885141","version":"6.0.1","normalized":"IQ4NXP/B3Ayzvw0rDQzVTYsCKyy0Jp9KI6aYcK7UnGVlR9+Awz++TIPCQtPYfLJfOpm8ajowMR09V7quD3sEHw==","implicit":false},"xunit.analyzers":{"rawSHA512":"0a9a735543bcc89eaf52b2b84c0cfabd914a9e040377fedc16ab8d73ce6ef66b782b710bf69077dfabae0ae5c4c842d1850f803f7ace0436c399231b5a69d232","id":"xunit.analyzers","bytes":341517,"rawSHA256":"9a61efc10e4b2e99306ca34b61733af7db0d5eaf750eb6d7902064539a7bf9f7","version":"2.3.0","normalized":"FcuLqoNBgQA4MmQXOdNWsDnlw+LBysWUcWOql6MCTXXFJZPn+qjbxHA9F9KBRiPH0Y97MLr1VE6LxdH8MgKUoQ==","implicit":false},"xunit.v3.assert":{"rawSHA512":"177366f17701e99d5ee6d8cbec8065818cd1ef28023e012616620f5f034f1e9bdf5ccdb62d5a2052b70be4c007a5359484fd3b0830de6b8ace68b9f73256666b","id":"xunit.v3.assert","bytes":293921,"rawSHA256":"46cbfedd6f8970cccd49e11730f045b8f2017872fcf370c463224e41f3babaa9","version":"4.0.3","normalized":"RrlWQ3yXla+ud9JBWDIY9GnUS/DS44r3ObqqV7wdWt1GhS+SveCe0MBDL238VXYoV2mWnX/DhO2LdTq5FTlT7g==","implicit":false},"xunit.v3.common":{"rawSHA512":"d3bee9c5d2a6b9b38f8a665892cf2f9e32cd148a8d6d6290017c559cda941bbe421d4124d5b40f528095141d182188ec5cb4a2a9c3d038410b3ff916751c0aa4","id":"xunit.v3.common","bytes":170002,"rawSHA256":"21f09821aad3f50e9f99231f61b67a5b5689bc448a9aabe06a1dcd6e9d59e91d","version":"4.0.3","normalized":"+2qGz3rcveIxzbXeZVHU8dhMyaawt01mgm/zv1FJH2FPcvJpfTUqc1vQ3hK2V5zVt8QEDddA+B6fkf9/LWf/Pg==","implicit":false},"xunit.v3.core.mtp-v2":{"rawSHA512":"8f01179acb34758aeb620a0a26a3842e0c7c75d8db44cad726d574b97f0b480bb00bb55c652a144b228cc1856a7fcc7f9fd57c9f7cfef2f0748ae2d7030e413a","id":"xunit.v3.core.mtp-v2","bytes":434468,"rawSHA256":"fd5c27e51806ff166887948b15d9e52f22bb2ea1490ce446e04a1b38d2ab89c3","version":"4.0.3","normalized":"CsmxEanMln1chMExl6TUjnH5kF0XUDb/SqWKXqnGD8UjpkZARAXi8JDtsUYdxuROcIIdwEfs3iHZeHmTeA8DUA==","implicit":false},"xunit.v3.extensibility.core":{"rawSHA512":"3f514cd8afaada1a22864fa845cdb3ab7b7d74f7585cead3e4d6eddbfac1ece4835b418dac964c7c83ced9370bc033ca953f6e44c499f4a2e28b1bd85b9eeefa","id":"xunit.v3.extensibility.core","bytes":383461,"rawSHA256":"333b23b0a2ead5314ba03e88e07fd7365f745ae72faf22fecb2d2fd5749c47aa","version":"4.0.3","normalized":"TBYqQKyT+XBDLSHjG6PnmQpooqatflBcWvNiESVS5ptQxWXVf/FGlkUfkNyHKRCUDSCxxHIJNgwO+SRosUmZEw==","implicit":false},"xunit.v3.mtp-v2":{"rawSHA512":"04bc0703bd22cc59c8719d5ca3e680dc5008f8cdeb865d46b930f20dbdfa059c77bdcacecf804d4a0d6920099ae76929c439ebc428fa234e38817f0c1a31a1e3","id":"xunit.v3.mtp-v2","bytes":32233,"rawSHA256":"95aa4b3557071c076bb030474aa120e35b3458da82f8a025e91b045c0cadc9b7","version":"4.0.3","normalized":"lad1hGmodKkfp3AgIwHVVIYeA9GfW125tnkYj7HvOyiwbDH8gpMKPPhzHRC1wc0w4a+0UsOHx2Ero/DtLXvtqA==","implicit":false},"xunit.v3.runner.common":{"rawSHA512":"c490d10b8f110b27625975a6e7e0add5d1eee269f844483fe5f01a0ae50ffa12d591c29550553cfca4f50ebdfc4c2fdfa2c1d50ead2940ffb15b8543240eac26","id":"xunit.v3.runner.common","bytes":531944,"rawSHA256":"e19f2f84b3a22d915d20cf29f69b3e2b91d390c0dc82e9071d3f278a160a615a","version":"4.0.3","normalized":"J/kkhBgJg3wu1xI8gY2Esm3oRE47gNrGmKpT/XZDPOzZ3/F33yTK/ZH1CM6qDpAHoTT3GY/JgrVbS4T1JEKYiQ==","implicit":false},"xunit.v3.runner.inproc.console":{"rawSHA512":"2eaadc0e4acf32baa403bfad007eeff518134e6602c819037c0e8c814b37cd7c86081e04725e102872d5eb5e224fc054010813a5c028097fd5bec14f968644ca","id":"xunit.v3.runner.inproc.console","bytes":134619,"rawSHA256":"7fe4577b94c5a044aab93c61b84441cb3076906a70769096f2987c9ffe949799","version":"4.0.3","normalized":"lDvNs5exa8rBdWXX/wdapPTp81SNCvUarXC5iXzr1qvO168+Sx/Ytrk9VSLbSD3Y9KNK8PcOjMl1q7JfCoo3LQ==","implicit":false}}''')
+TEST_PACKAGES = json.loads(r'''{
+  "xunit.v3": {
+    "rawSHA512": "72910d8c1348d6122b4c9ac373818ac7ce7df1aed3d578077fc03dd533844a3ed10929eacaec9c2e10d884a79d08ab9d7ae6074bca5954faea4113662b459803",
+    "id": "xunit.v3",
+    "bytes": 32099,
+    "rawSHA256": "cc54f2fa01f64df2c7e25cc826e81db08f9e1d9ebce2f41fd22adcb11d39eb8e",
+    "version": "4.0.3",
+    "normalized": "GxBopTuV5aU7NS0iE1P6I6YCQscIAP0iIyyZqZhs1c8Ry3cdiOouEtQQpX8cA7E1gEnKGRMNA+7NlhBy13AEyg==",
+    "implicit": false,
+    "signatureFileSHA256": "94e6a1a583585d36403d7a6c40ab6cf8237010b21b29b1848130551f1af975e6",
+    "repositoryCertificate": "1F4B311D9ACC115C8DC8018B5A49E00FCE6DA8E2855F9F014CA6F34570BC482D",
+    "repositoryProvenance": {
+      "state": "EXACT_RETAINED_CMS_DATA_AND_COORDINATOR_OFFICIAL_CERT_REFERENCE",
+      "retainedCmsRepositoryData": [
+        {
+          "role": "counter",
+          "certificateSHA256": "1F4B311D9ACC115C8DC8018B5A49E00FCE6DA8E2855F9F014CA6F34570BC482D",
+          "notBefore": "2024-02-23T00:00:00.0000000Z",
+          "notAfter": "2027-05-18T23:59:59.0000000Z",
+          "repositoryAttributeOid": "1.3.6.1.4.1.311.84.2.1.1.1",
+          "timestampAttributePresent": true
+        }
+      ],
+      "officialCertificateReference": "https://learn.microsoft.com/en-us/nuget/api/repository-signatures-resource",
+      "timestampPolicyReference": "https://learn.microsoft.com/en-us/nuget/reference/signed-packages-reference",
+      "referenceScope": "Coordinator-supplied official certificate provenance; not fetched or cryptographically revalidated this stage",
+      "signatureAndTimestampVerified": false
+    }
+  },
+  "microsoft.applicationinsights": {
+    "rawSHA512": "dd497bfad0c65e54a4f78d2a1644f3d0854d4cd01dd83ba506f8d5d53635e28152c7c13210dd5dd3985780aab146a7620de3ebaead8ef12c6f87088676c2157f",
+    "id": "microsoft.applicationinsights",
+    "bytes": 1737910,
+    "rawSHA256": "e6c7f76e0ec26598c7b1e2be1777e839c84486655e8a878fc4c655bd2e918dbd",
+    "version": "2.23.0",
+    "normalized": "nWArUZTdU7iqZLycLKWe0TDms48KKGE6pONH2terYNa8REXiqixrMOkf1sk5DHGMaUTqONU2YkS4SAXBhLStgw==",
+    "implicit": false,
+    "signatureFileSHA256": "1e9781ba812b702fcd4bfcbf4009cac880eb17215844c7cdfd840a6d9bb62197",
+    "repositoryCertificate": "1F4B311D9ACC115C8DC8018B5A49E00FCE6DA8E2855F9F014CA6F34570BC482D",
+    "repositoryProvenance": {
+      "state": "EXACT_RETAINED_CMS_DATA_AND_COORDINATOR_OFFICIAL_CERT_REFERENCE",
+      "retainedCmsRepositoryData": [
+        {
+          "role": "counter",
+          "certificateSHA256": "1F4B311D9ACC115C8DC8018B5A49E00FCE6DA8E2855F9F014CA6F34570BC482D",
+          "notBefore": "2024-02-23T00:00:00.0000000Z",
+          "notAfter": "2027-05-18T23:59:59.0000000Z",
+          "repositoryAttributeOid": "1.3.6.1.4.1.311.84.2.1.1.1",
+          "timestampAttributePresent": true
+        }
+      ],
+      "officialCertificateReference": "https://learn.microsoft.com/en-us/nuget/api/repository-signatures-resource",
+      "timestampPolicyReference": "https://learn.microsoft.com/en-us/nuget/reference/signed-packages-reference",
+      "referenceScope": "Coordinator-supplied official certificate provenance; not fetched or cryptographically revalidated this stage",
+      "signatureAndTimestampVerified": false
+    }
+  },
+  "microsoft.bcl.asyncinterfaces": {
+    "rawSHA512": "221a05a0c910f7a87b620d8f3831ed392b4eb95d112bee274d35f27009ad2a26445de9d7cd235fe6fb4a03f2550874bda3be3dddd96edaf9c0852a9c23d7b099",
+    "id": "microsoft.bcl.asyncinterfaces",
+    "bytes": 76354,
+    "rawSHA256": "e3df87fe2170a7e01f0880af59caa8f6eb380b3c40a4f282dfb43912aaf0f895",
+    "version": "6.0.0",
+    "normalized": "UcSjPsst+DfAdJGVDsu346FX0ci0ah+lw3WRtn18NUwEqRt70HaOQ7lI72vy3+1LxtqI3T5GWwV39rQSrCzAeg==",
+    "implicit": false,
+    "signatureFileSHA256": "1be128d1337424fcd896cd7ce872698c714bc998ffa6793eacf50bcf4d6e92f2",
+    "repositoryCertificate": "5A2901D6ADA3D18260B9C6DFE2133C95D74B9EEF6AE0E5DC334C8454D1477DF4",
+    "repositoryProvenance": {
+      "state": "EXACT_RETAINED_CMS_DATA_AND_COORDINATOR_OFFICIAL_CERT_REFERENCE",
+      "retainedCmsRepositoryData": [
+        {
+          "role": "counter",
+          "certificateSHA256": "5A2901D6ADA3D18260B9C6DFE2133C95D74B9EEF6AE0E5DC334C8454D1477DF4",
+          "notBefore": "2021-02-16T00:00:00.0000000Z",
+          "notAfter": "2024-05-15T23:59:59.0000000Z",
+          "repositoryAttributeOid": "1.3.6.1.4.1.311.84.2.1.1.1",
+          "timestampAttributePresent": true
+        }
+      ],
+      "officialCertificateReference": "https://learn.microsoft.com/en-us/nuget/api/repository-signatures-resource",
+      "timestampPolicyReference": "https://learn.microsoft.com/en-us/nuget/reference/signed-packages-reference",
+      "referenceScope": "Coordinator-supplied official certificate provenance; not fetched or cryptographically revalidated this stage",
+      "signatureAndTimestampVerified": false
+    }
+  },
+  "microsoft.testing.extensions.telemetry": {
+    "rawSHA512": "9a372a18499687500c9f33fd324450d7f6fc96f78ac86be08b7f39f5bc2f7cd9137eb6513550df82d2b6be4d03cddbf82dc4873cf098e4d3bd0d38bf8338c99c",
+    "id": "microsoft.testing.extensions.telemetry",
+    "bytes": 517775,
+    "rawSHA256": "fdc508edfbba0741f92d0c298b4688129c200b979ae1d057debc5f88565c458a",
+    "version": "2.5.2",
+    "normalized": "j1XGKCBrmfNm0tmotMa05GlqVtb2cW5UaMkKCFHPyyFHz5rdOy7TD0SVXnZJ+QMrjPAHjRoRqn5qcsUjICSWwg==",
+    "implicit": false,
+    "signatureFileSHA256": "c478464a1e34bb7e377310a84e38afca108678d8a4a38319595eaea888416c64",
+    "repositoryCertificate": "1F4B311D9ACC115C8DC8018B5A49E00FCE6DA8E2855F9F014CA6F34570BC482D",
+    "repositoryProvenance": {
+      "state": "EXACT_RETAINED_CMS_DATA_AND_COORDINATOR_OFFICIAL_CERT_REFERENCE",
+      "retainedCmsRepositoryData": [
+        {
+          "role": "counter",
+          "certificateSHA256": "1F4B311D9ACC115C8DC8018B5A49E00FCE6DA8E2855F9F014CA6F34570BC482D",
+          "notBefore": "2024-02-23T00:00:00.0000000Z",
+          "notAfter": "2027-05-18T23:59:59.0000000Z",
+          "repositoryAttributeOid": "1.3.6.1.4.1.311.84.2.1.1.1",
+          "timestampAttributePresent": true
+        }
+      ],
+      "officialCertificateReference": "https://learn.microsoft.com/en-us/nuget/api/repository-signatures-resource",
+      "timestampPolicyReference": "https://learn.microsoft.com/en-us/nuget/reference/signed-packages-reference",
+      "referenceScope": "Coordinator-supplied official certificate provenance; not fetched or cryptographically revalidated this stage",
+      "signatureAndTimestampVerified": false
+    }
+  },
+  "microsoft.testing.extensions.trxreport.abstractions": {
+    "rawSHA512": "74fbdeaf0f237c21dd5eb8edbf5dffa5b7c46625d2d2b29eb26e172d19002e31b476aa8a51dd5bfa560ea241830ec6b710974fd63f719950a16cc741b2e6ac28",
+    "id": "microsoft.testing.extensions.trxreport.abstractions",
+    "bytes": 114290,
+    "rawSHA256": "915a82acf3d3af17ca0ff856adb8a536d01a134a443a462946d9564a08b22e9d",
+    "version": "2.5.2",
+    "normalized": "+xTIaIU9H44GxOyjrfieMSZnxltGvleA3jCRtdEAzlXKb85pMmVYMLUv2JS8KwD+U2wQHUgvy5YfQfWoPEfVdQ==",
+    "implicit": false,
+    "signatureFileSHA256": "af3626d703c32776298be8f9a7aa4bb2a6df7ed8004f50cacdbafd9aaa8de00b",
+    "repositoryCertificate": "1F4B311D9ACC115C8DC8018B5A49E00FCE6DA8E2855F9F014CA6F34570BC482D",
+    "repositoryProvenance": {
+      "state": "EXACT_RETAINED_CMS_DATA_AND_COORDINATOR_OFFICIAL_CERT_REFERENCE",
+      "retainedCmsRepositoryData": [
+        {
+          "role": "counter",
+          "certificateSHA256": "1F4B311D9ACC115C8DC8018B5A49E00FCE6DA8E2855F9F014CA6F34570BC482D",
+          "notBefore": "2024-02-23T00:00:00.0000000Z",
+          "notAfter": "2027-05-18T23:59:59.0000000Z",
+          "repositoryAttributeOid": "1.3.6.1.4.1.311.84.2.1.1.1",
+          "timestampAttributePresent": true
+        }
+      ],
+      "officialCertificateReference": "https://learn.microsoft.com/en-us/nuget/api/repository-signatures-resource",
+      "timestampPolicyReference": "https://learn.microsoft.com/en-us/nuget/reference/signed-packages-reference",
+      "referenceScope": "Coordinator-supplied official certificate provenance; not fetched or cryptographically revalidated this stage",
+      "signatureAndTimestampVerified": false
+    }
+  },
+  "microsoft.testing.platform": {
+    "rawSHA512": "e8aa808d280c15589f50e11bb9191bd5b81a797ed7d7c24286933ef8d596d6e001a5c9b9665712de50a7f4454cbd35faf84d8f610316840313efe41e1ad1fd7a",
+    "id": "microsoft.testing.platform",
+    "bytes": 3792942,
+    "rawSHA256": "9ac2d8d4ff97a506eeba446ba1bc5b7a77e882d1823fb45373a60dfd0b7d2463",
+    "version": "2.5.2",
+    "normalized": "ocX0rgGY78dKfmZlZe4hB0/dvlh7wJgUAWS+KfwrqxB9DpNsjshnne9dppCKnFNEOkX4QYsrdUU++NInFPiCBw==",
+    "implicit": false,
+    "signatureFileSHA256": "5dea3881a71249bdef669ef9181b2a604f59b0a517184b10ab7a49ab4f043144",
+    "repositoryCertificate": "1F4B311D9ACC115C8DC8018B5A49E00FCE6DA8E2855F9F014CA6F34570BC482D",
+    "repositoryProvenance": {
+      "state": "EXACT_RETAINED_CMS_DATA_AND_COORDINATOR_OFFICIAL_CERT_REFERENCE",
+      "retainedCmsRepositoryData": [
+        {
+          "role": "counter",
+          "certificateSHA256": "1F4B311D9ACC115C8DC8018B5A49E00FCE6DA8E2855F9F014CA6F34570BC482D",
+          "notBefore": "2024-02-23T00:00:00.0000000Z",
+          "notAfter": "2027-05-18T23:59:59.0000000Z",
+          "repositoryAttributeOid": "1.3.6.1.4.1.311.84.2.1.1.1",
+          "timestampAttributePresent": true
+        }
+      ],
+      "officialCertificateReference": "https://learn.microsoft.com/en-us/nuget/api/repository-signatures-resource",
+      "timestampPolicyReference": "https://learn.microsoft.com/en-us/nuget/reference/signed-packages-reference",
+      "referenceScope": "Coordinator-supplied official certificate provenance; not fetched or cryptographically revalidated this stage",
+      "signatureAndTimestampVerified": false
+    }
+  },
+  "microsoft.testing.platform.msbuild": {
+    "rawSHA512": "08afa4b6a9a8709b22ec1f8b35a56c859c6fec269c561e0dca3eedbec8eec6615e6b9d8e7739b127b115eed705c8809fa92ab13e643595e9a85ff6dcecd39174",
+    "id": "microsoft.testing.platform.msbuild",
+    "bytes": 2279673,
+    "rawSHA256": "04616888e7eee8e5e6e042354eeb41f5ad34d60bfb015681596a372a0f904e64",
+    "version": "2.5.2",
+    "normalized": "Jey2v0hd7WHHa7pr6MRNKtA07FvxcOMTCtIhTI7uBZ/qR5m1mgCVCo5L1rtVAtqgMhGA205bUwq9+is4LiCzpw==",
+    "implicit": false,
+    "signatureFileSHA256": "e1ff42502ea5f5885dbdf83c99353be6556a8bdcc0da032f575a7c8560bccaf6",
+    "repositoryCertificate": "1F4B311D9ACC115C8DC8018B5A49E00FCE6DA8E2855F9F014CA6F34570BC482D",
+    "repositoryProvenance": {
+      "state": "EXACT_RETAINED_CMS_DATA_AND_COORDINATOR_OFFICIAL_CERT_REFERENCE",
+      "retainedCmsRepositoryData": [
+        {
+          "role": "counter",
+          "certificateSHA256": "1F4B311D9ACC115C8DC8018B5A49E00FCE6DA8E2855F9F014CA6F34570BC482D",
+          "notBefore": "2024-02-23T00:00:00.0000000Z",
+          "notAfter": "2027-05-18T23:59:59.0000000Z",
+          "repositoryAttributeOid": "1.3.6.1.4.1.311.84.2.1.1.1",
+          "timestampAttributePresent": true
+        }
+      ],
+      "officialCertificateReference": "https://learn.microsoft.com/en-us/nuget/api/repository-signatures-resource",
+      "timestampPolicyReference": "https://learn.microsoft.com/en-us/nuget/reference/signed-packages-reference",
+      "referenceScope": "Coordinator-supplied official certificate provenance; not fetched or cryptographically revalidated this stage",
+      "signatureAndTimestampVerified": false
+    }
+  },
+  "microsoft.win32.registry": {
+    "rawSHA512": "471e66567ce59cc86475aece7815d05261264ce114e0c1688ba2551dd51494901fa72dd7a8f74f8e8f0f3dba74af8595f177552f3c06abb4bfce76692197076e",
+    "id": "microsoft.win32.registry",
+    "bytes": 354731,
+    "rawSHA256": "f64ca53c67ca65ce7cc85a8d29aefbb2da2672836731e1115e8cd62730dc5080",
+    "version": "5.0.0",
+    "normalized": "dDoKi0PnDz31yAyETfRntsLArTlVAVzUzCIvvEDsDsucrl33Dl8pIJG06ePTJTI3tGpeyHS9Cq7Foc/s4EeKcg==",
+    "implicit": false,
+    "signatureFileSHA256": "eb36362b3b0f9390d9b29f618f0dd3a9adf2bf72309a7b25e8b87439dfc8b781",
+    "repositoryCertificate": null,
+    "repositoryProvenance": {
+      "state": "UNKNOWN",
+      "retainedCmsRepositoryData": [
+        {
+          "role": "counter",
+          "certificateSHA256": "0E5F38F57DC1BCC806D8494F4F90FBCEDD988B46760709CBEEC6F4219AA6157D",
+          "notBefore": "2018-04-10T00:00:00.0000000Z",
+          "notAfter": "2021-04-14T12:00:00.0000000Z",
+          "repositoryAttributeOid": "1.3.6.1.4.1.311.84.2.1.1.1",
+          "timestampAttributePresent": true
+        }
+      ],
+      "officialCertificateReference": "https://learn.microsoft.com/en-us/nuget/api/repository-signatures-resource",
+      "timestampPolicyReference": "https://learn.microsoft.com/en-us/nuget/reference/signed-packages-reference",
+      "referenceScope": "Coordinator-supplied official certificate provenance; not fetched or cryptographically revalidated this stage",
+      "signatureAndTimestampVerified": false
+    }
+  },
+  "system.security.accesscontrol": {
+    "rawSHA512": "e1beba70b45f8cc5ae06fdecf365f0bb5b58b9af6d7c79accfef15b5a7c7bbef65e10cf9f299418eb413aac86ffefaa0eab9d91650ce77cc398d390f0597ed42",
+    "id": "system.security.accesscontrol",
+    "bytes": 235270,
+    "rawSHA256": "462e26f796417e8a4350655a85bbd4233b94cbd0f7150c1c5e9acfd88e885141",
+    "version": "6.0.1",
+    "normalized": "IQ4NXP/B3Ayzvw0rDQzVTYsCKyy0Jp9KI6aYcK7UnGVlR9+Awz++TIPCQtPYfLJfOpm8ajowMR09V7quD3sEHw==",
+    "implicit": false,
+    "signatureFileSHA256": "1ffaa791e75a090ba956931b6126399b2a7aef8bd289bee689ca90656b7f6556",
+    "repositoryCertificate": "1F4B311D9ACC115C8DC8018B5A49E00FCE6DA8E2855F9F014CA6F34570BC482D",
+    "repositoryProvenance": {
+      "state": "EXACT_RETAINED_CMS_DATA_AND_COORDINATOR_OFFICIAL_CERT_REFERENCE",
+      "retainedCmsRepositoryData": [
+        {
+          "role": "counter",
+          "certificateSHA256": "1F4B311D9ACC115C8DC8018B5A49E00FCE6DA8E2855F9F014CA6F34570BC482D",
+          "notBefore": "2024-02-23T00:00:00.0000000Z",
+          "notAfter": "2027-05-18T23:59:59.0000000Z",
+          "repositoryAttributeOid": "1.3.6.1.4.1.311.84.2.1.1.1",
+          "timestampAttributePresent": true
+        }
+      ],
+      "officialCertificateReference": "https://learn.microsoft.com/en-us/nuget/api/repository-signatures-resource",
+      "timestampPolicyReference": "https://learn.microsoft.com/en-us/nuget/reference/signed-packages-reference",
+      "referenceScope": "Coordinator-supplied official certificate provenance; not fetched or cryptographically revalidated this stage",
+      "signatureAndTimestampVerified": false
+    }
+  },
+  "xunit.analyzers": {
+    "rawSHA512": "0a9a735543bcc89eaf52b2b84c0cfabd914a9e040377fedc16ab8d73ce6ef66b782b710bf69077dfabae0ae5c4c842d1850f803f7ace0436c399231b5a69d232",
+    "id": "xunit.analyzers",
+    "bytes": 341517,
+    "rawSHA256": "9a61efc10e4b2e99306ca34b61733af7db0d5eaf750eb6d7902064539a7bf9f7",
+    "version": "2.3.0",
+    "normalized": "FcuLqoNBgQA4MmQXOdNWsDnlw+LBysWUcWOql6MCTXXFJZPn+qjbxHA9F9KBRiPH0Y97MLr1VE6LxdH8MgKUoQ==",
+    "implicit": false,
+    "signatureFileSHA256": "16d96a1810014a3aa02bceca6c4a6f3cb902f915215345ee9416d0acadb286f4",
+    "repositoryCertificate": "1F4B311D9ACC115C8DC8018B5A49E00FCE6DA8E2855F9F014CA6F34570BC482D",
+    "repositoryProvenance": {
+      "state": "EXACT_RETAINED_CMS_DATA_AND_COORDINATOR_OFFICIAL_CERT_REFERENCE",
+      "retainedCmsRepositoryData": [
+        {
+          "role": "counter",
+          "certificateSHA256": "1F4B311D9ACC115C8DC8018B5A49E00FCE6DA8E2855F9F014CA6F34570BC482D",
+          "notBefore": "2024-02-23T00:00:00.0000000Z",
+          "notAfter": "2027-05-18T23:59:59.0000000Z",
+          "repositoryAttributeOid": "1.3.6.1.4.1.311.84.2.1.1.1",
+          "timestampAttributePresent": true
+        }
+      ],
+      "officialCertificateReference": "https://learn.microsoft.com/en-us/nuget/api/repository-signatures-resource",
+      "timestampPolicyReference": "https://learn.microsoft.com/en-us/nuget/reference/signed-packages-reference",
+      "referenceScope": "Coordinator-supplied official certificate provenance; not fetched or cryptographically revalidated this stage",
+      "signatureAndTimestampVerified": false
+    }
+  },
+  "xunit.v3.assert": {
+    "rawSHA512": "177366f17701e99d5ee6d8cbec8065818cd1ef28023e012616620f5f034f1e9bdf5ccdb62d5a2052b70be4c007a5359484fd3b0830de6b8ace68b9f73256666b",
+    "id": "xunit.v3.assert",
+    "bytes": 293921,
+    "rawSHA256": "46cbfedd6f8970cccd49e11730f045b8f2017872fcf370c463224e41f3babaa9",
+    "version": "4.0.3",
+    "normalized": "RrlWQ3yXla+ud9JBWDIY9GnUS/DS44r3ObqqV7wdWt1GhS+SveCe0MBDL238VXYoV2mWnX/DhO2LdTq5FTlT7g==",
+    "implicit": false,
+    "signatureFileSHA256": "71e98b1da0d196791f72b03c6d452f3fb695638787d391d39f11c7f8c89a0c2b",
+    "repositoryCertificate": "1F4B311D9ACC115C8DC8018B5A49E00FCE6DA8E2855F9F014CA6F34570BC482D",
+    "repositoryProvenance": {
+      "state": "EXACT_RETAINED_CMS_DATA_AND_COORDINATOR_OFFICIAL_CERT_REFERENCE",
+      "retainedCmsRepositoryData": [
+        {
+          "role": "counter",
+          "certificateSHA256": "1F4B311D9ACC115C8DC8018B5A49E00FCE6DA8E2855F9F014CA6F34570BC482D",
+          "notBefore": "2024-02-23T00:00:00.0000000Z",
+          "notAfter": "2027-05-18T23:59:59.0000000Z",
+          "repositoryAttributeOid": "1.3.6.1.4.1.311.84.2.1.1.1",
+          "timestampAttributePresent": true
+        }
+      ],
+      "officialCertificateReference": "https://learn.microsoft.com/en-us/nuget/api/repository-signatures-resource",
+      "timestampPolicyReference": "https://learn.microsoft.com/en-us/nuget/reference/signed-packages-reference",
+      "referenceScope": "Coordinator-supplied official certificate provenance; not fetched or cryptographically revalidated this stage",
+      "signatureAndTimestampVerified": false
+    }
+  },
+  "xunit.v3.common": {
+    "rawSHA512": "d3bee9c5d2a6b9b38f8a665892cf2f9e32cd148a8d6d6290017c559cda941bbe421d4124d5b40f528095141d182188ec5cb4a2a9c3d038410b3ff916751c0aa4",
+    "id": "xunit.v3.common",
+    "bytes": 170002,
+    "rawSHA256": "21f09821aad3f50e9f99231f61b67a5b5689bc448a9aabe06a1dcd6e9d59e91d",
+    "version": "4.0.3",
+    "normalized": "+2qGz3rcveIxzbXeZVHU8dhMyaawt01mgm/zv1FJH2FPcvJpfTUqc1vQ3hK2V5zVt8QEDddA+B6fkf9/LWf/Pg==",
+    "implicit": false,
+    "signatureFileSHA256": "b10f318a8dec4d53007f0caec24e0222ee319f2a7f18ec60b09d49994cf9b82f",
+    "repositoryCertificate": "1F4B311D9ACC115C8DC8018B5A49E00FCE6DA8E2855F9F014CA6F34570BC482D",
+    "repositoryProvenance": {
+      "state": "EXACT_RETAINED_CMS_DATA_AND_COORDINATOR_OFFICIAL_CERT_REFERENCE",
+      "retainedCmsRepositoryData": [
+        {
+          "role": "counter",
+          "certificateSHA256": "1F4B311D9ACC115C8DC8018B5A49E00FCE6DA8E2855F9F014CA6F34570BC482D",
+          "notBefore": "2024-02-23T00:00:00.0000000Z",
+          "notAfter": "2027-05-18T23:59:59.0000000Z",
+          "repositoryAttributeOid": "1.3.6.1.4.1.311.84.2.1.1.1",
+          "timestampAttributePresent": true
+        }
+      ],
+      "officialCertificateReference": "https://learn.microsoft.com/en-us/nuget/api/repository-signatures-resource",
+      "timestampPolicyReference": "https://learn.microsoft.com/en-us/nuget/reference/signed-packages-reference",
+      "referenceScope": "Coordinator-supplied official certificate provenance; not fetched or cryptographically revalidated this stage",
+      "signatureAndTimestampVerified": false
+    }
+  },
+  "xunit.v3.core.mtp-v2": {
+    "rawSHA512": "8f01179acb34758aeb620a0a26a3842e0c7c75d8db44cad726d574b97f0b480bb00bb55c652a144b228cc1856a7fcc7f9fd57c9f7cfef2f0748ae2d7030e413a",
+    "id": "xunit.v3.core.mtp-v2",
+    "bytes": 434468,
+    "rawSHA256": "fd5c27e51806ff166887948b15d9e52f22bb2ea1490ce446e04a1b38d2ab89c3",
+    "version": "4.0.3",
+    "normalized": "CsmxEanMln1chMExl6TUjnH5kF0XUDb/SqWKXqnGD8UjpkZARAXi8JDtsUYdxuROcIIdwEfs3iHZeHmTeA8DUA==",
+    "implicit": false,
+    "signatureFileSHA256": "1377efea846909a5eab097004d17b7c767d9d0236b214f380aa3ebd9934311bb",
+    "repositoryCertificate": "1F4B311D9ACC115C8DC8018B5A49E00FCE6DA8E2855F9F014CA6F34570BC482D",
+    "repositoryProvenance": {
+      "state": "EXACT_RETAINED_CMS_DATA_AND_COORDINATOR_OFFICIAL_CERT_REFERENCE",
+      "retainedCmsRepositoryData": [
+        {
+          "role": "counter",
+          "certificateSHA256": "1F4B311D9ACC115C8DC8018B5A49E00FCE6DA8E2855F9F014CA6F34570BC482D",
+          "notBefore": "2024-02-23T00:00:00.0000000Z",
+          "notAfter": "2027-05-18T23:59:59.0000000Z",
+          "repositoryAttributeOid": "1.3.6.1.4.1.311.84.2.1.1.1",
+          "timestampAttributePresent": true
+        }
+      ],
+      "officialCertificateReference": "https://learn.microsoft.com/en-us/nuget/api/repository-signatures-resource",
+      "timestampPolicyReference": "https://learn.microsoft.com/en-us/nuget/reference/signed-packages-reference",
+      "referenceScope": "Coordinator-supplied official certificate provenance; not fetched or cryptographically revalidated this stage",
+      "signatureAndTimestampVerified": false
+    }
+  },
+  "xunit.v3.extensibility.core": {
+    "rawSHA512": "3f514cd8afaada1a22864fa845cdb3ab7b7d74f7585cead3e4d6eddbfac1ece4835b418dac964c7c83ced9370bc033ca953f6e44c499f4a2e28b1bd85b9eeefa",
+    "id": "xunit.v3.extensibility.core",
+    "bytes": 383461,
+    "rawSHA256": "333b23b0a2ead5314ba03e88e07fd7365f745ae72faf22fecb2d2fd5749c47aa",
+    "version": "4.0.3",
+    "normalized": "TBYqQKyT+XBDLSHjG6PnmQpooqatflBcWvNiESVS5ptQxWXVf/FGlkUfkNyHKRCUDSCxxHIJNgwO+SRosUmZEw==",
+    "implicit": false,
+    "signatureFileSHA256": "2005610cee6a5fff013ddccf65fd618c0bf0935280bf031d6d267594e56627fa",
+    "repositoryCertificate": "1F4B311D9ACC115C8DC8018B5A49E00FCE6DA8E2855F9F014CA6F34570BC482D",
+    "repositoryProvenance": {
+      "state": "EXACT_RETAINED_CMS_DATA_AND_COORDINATOR_OFFICIAL_CERT_REFERENCE",
+      "retainedCmsRepositoryData": [
+        {
+          "role": "counter",
+          "certificateSHA256": "1F4B311D9ACC115C8DC8018B5A49E00FCE6DA8E2855F9F014CA6F34570BC482D",
+          "notBefore": "2024-02-23T00:00:00.0000000Z",
+          "notAfter": "2027-05-18T23:59:59.0000000Z",
+          "repositoryAttributeOid": "1.3.6.1.4.1.311.84.2.1.1.1",
+          "timestampAttributePresent": true
+        }
+      ],
+      "officialCertificateReference": "https://learn.microsoft.com/en-us/nuget/api/repository-signatures-resource",
+      "timestampPolicyReference": "https://learn.microsoft.com/en-us/nuget/reference/signed-packages-reference",
+      "referenceScope": "Coordinator-supplied official certificate provenance; not fetched or cryptographically revalidated this stage",
+      "signatureAndTimestampVerified": false
+    }
+  },
+  "xunit.v3.mtp-v2": {
+    "rawSHA512": "04bc0703bd22cc59c8719d5ca3e680dc5008f8cdeb865d46b930f20dbdfa059c77bdcacecf804d4a0d6920099ae76929c439ebc428fa234e38817f0c1a31a1e3",
+    "id": "xunit.v3.mtp-v2",
+    "bytes": 32233,
+    "rawSHA256": "95aa4b3557071c076bb030474aa120e35b3458da82f8a025e91b045c0cadc9b7",
+    "version": "4.0.3",
+    "normalized": "lad1hGmodKkfp3AgIwHVVIYeA9GfW125tnkYj7HvOyiwbDH8gpMKPPhzHRC1wc0w4a+0UsOHx2Ero/DtLXvtqA==",
+    "implicit": false,
+    "signatureFileSHA256": "ad21043712a9d07043088b3f44bf77a320629d512e32287e86a55ab26ba5dbb3",
+    "repositoryCertificate": "1F4B311D9ACC115C8DC8018B5A49E00FCE6DA8E2855F9F014CA6F34570BC482D",
+    "repositoryProvenance": {
+      "state": "EXACT_RETAINED_CMS_DATA_AND_COORDINATOR_OFFICIAL_CERT_REFERENCE",
+      "retainedCmsRepositoryData": [
+        {
+          "role": "counter",
+          "certificateSHA256": "1F4B311D9ACC115C8DC8018B5A49E00FCE6DA8E2855F9F014CA6F34570BC482D",
+          "notBefore": "2024-02-23T00:00:00.0000000Z",
+          "notAfter": "2027-05-18T23:59:59.0000000Z",
+          "repositoryAttributeOid": "1.3.6.1.4.1.311.84.2.1.1.1",
+          "timestampAttributePresent": true
+        }
+      ],
+      "officialCertificateReference": "https://learn.microsoft.com/en-us/nuget/api/repository-signatures-resource",
+      "timestampPolicyReference": "https://learn.microsoft.com/en-us/nuget/reference/signed-packages-reference",
+      "referenceScope": "Coordinator-supplied official certificate provenance; not fetched or cryptographically revalidated this stage",
+      "signatureAndTimestampVerified": false
+    }
+  },
+  "xunit.v3.runner.common": {
+    "rawSHA512": "c490d10b8f110b27625975a6e7e0add5d1eee269f844483fe5f01a0ae50ffa12d591c29550553cfca4f50ebdfc4c2fdfa2c1d50ead2940ffb15b8543240eac26",
+    "id": "xunit.v3.runner.common",
+    "bytes": 531944,
+    "rawSHA256": "e19f2f84b3a22d915d20cf29f69b3e2b91d390c0dc82e9071d3f278a160a615a",
+    "version": "4.0.3",
+    "normalized": "J/kkhBgJg3wu1xI8gY2Esm3oRE47gNrGmKpT/XZDPOzZ3/F33yTK/ZH1CM6qDpAHoTT3GY/JgrVbS4T1JEKYiQ==",
+    "implicit": false,
+    "signatureFileSHA256": "a863f6241c86d2820d16ddf812b7a30b6acbf29c9a223e0b316eaca74276abb5",
+    "repositoryCertificate": "1F4B311D9ACC115C8DC8018B5A49E00FCE6DA8E2855F9F014CA6F34570BC482D",
+    "repositoryProvenance": {
+      "state": "EXACT_RETAINED_CMS_DATA_AND_COORDINATOR_OFFICIAL_CERT_REFERENCE",
+      "retainedCmsRepositoryData": [
+        {
+          "role": "counter",
+          "certificateSHA256": "1F4B311D9ACC115C8DC8018B5A49E00FCE6DA8E2855F9F014CA6F34570BC482D",
+          "notBefore": "2024-02-23T00:00:00.0000000Z",
+          "notAfter": "2027-05-18T23:59:59.0000000Z",
+          "repositoryAttributeOid": "1.3.6.1.4.1.311.84.2.1.1.1",
+          "timestampAttributePresent": true
+        }
+      ],
+      "officialCertificateReference": "https://learn.microsoft.com/en-us/nuget/api/repository-signatures-resource",
+      "timestampPolicyReference": "https://learn.microsoft.com/en-us/nuget/reference/signed-packages-reference",
+      "referenceScope": "Coordinator-supplied official certificate provenance; not fetched or cryptographically revalidated this stage",
+      "signatureAndTimestampVerified": false
+    }
+  },
+  "xunit.v3.runner.inproc.console": {
+    "rawSHA512": "2eaadc0e4acf32baa403bfad007eeff518134e6602c819037c0e8c814b37cd7c86081e04725e102872d5eb5e224fc054010813a5c028097fd5bec14f968644ca",
+    "id": "xunit.v3.runner.inproc.console",
+    "bytes": 134619,
+    "rawSHA256": "7fe4577b94c5a044aab93c61b84441cb3076906a70769096f2987c9ffe949799",
+    "version": "4.0.3",
+    "normalized": "lDvNs5exa8rBdWXX/wdapPTp81SNCvUarXC5iXzr1qvO168+Sx/Ytrk9VSLbSD3Y9KNK8PcOjMl1q7JfCoo3LQ==",
+    "implicit": false,
+    "signatureFileSHA256": "967d9037780c61f4050c64da302242afb0fad74766116dfa8947f29888f7776e",
+    "repositoryCertificate": "1F4B311D9ACC115C8DC8018B5A49E00FCE6DA8E2855F9F014CA6F34570BC482D",
+    "repositoryProvenance": {
+      "state": "EXACT_RETAINED_CMS_DATA_AND_COORDINATOR_OFFICIAL_CERT_REFERENCE",
+      "retainedCmsRepositoryData": [
+        {
+          "role": "counter",
+          "certificateSHA256": "1F4B311D9ACC115C8DC8018B5A49E00FCE6DA8E2855F9F014CA6F34570BC482D",
+          "notBefore": "2024-02-23T00:00:00.0000000Z",
+          "notAfter": "2027-05-18T23:59:59.0000000Z",
+          "repositoryAttributeOid": "1.3.6.1.4.1.311.84.2.1.1.1",
+          "timestampAttributePresent": true
+        }
+      ],
+      "officialCertificateReference": "https://learn.microsoft.com/en-us/nuget/api/repository-signatures-resource",
+      "timestampPolicyReference": "https://learn.microsoft.com/en-us/nuget/reference/signed-packages-reference",
+      "referenceScope": "Coordinator-supplied official certificate provenance; not fetched or cryptographically revalidated this stage",
+      "signatureAndTimestampVerified": false
+    }
+  }
+}''')
 IMPLICIT = json.loads(r'''{"microsoft.netcore.app.runtime.linux-x64":{"rawSHA512":"024eb2dc412ac0d4ff64be56100a066e3c63bbc322b17a67471611ca74627e8b5a28469d8615a4e7fcf6293bcd6e747202f32aadb376d534a7258e0dc594a1c5","id":"microsoft.netcore.app.runtime.linux-x64","bytes":40105291,"rawSHA256":"4f48051ab89575999f426340665f1fa0f7545829b331902a9d993d513fe4a338","version":"10.0.15","normalized":"ALsQzH86bVhGmWjv/sESo973cpasVCDicswfJt3bDB7/IUkEs17ilOCyxXbiAGDyCFylNDSAEaFyNwdoU/mAQw==","implicit":true},"microsoft.netcore.app.runtime.win-x64":{"rawSHA512":"304180911187ac05d8036b7f2e8d260f11fefcee4d2ea8164dc561ef488e6494e9a0e08bfe329f3a00ea6280e2dd6f56727be22f80e1325fb99560bc731b6d4b","id":"microsoft.netcore.app.runtime.win-x64","bytes":39989758,"rawSHA256":"7423f58917342b9e4bf276fb164d5726d2c90fe2fe989c552b9e39056256a035","version":"10.0.15","normalized":"vzCVKwBmeXZ31VkaU956oQE1zda/pweaw1q0vtnRWzivoPa4jyz9zVrmhrora1UJlPkzfBteQHf9bOYAF2ZuVw==","implicit":true},"microsoft.aspnetcore.app.runtime.linux-x64":{"rawSHA512":"398f616b0ac01449e1d45d256ca3007174404cc4cf3a83035b06b64b6dc4d0c3e9b722e019c05541e1448775dad81dd23079410d8a6328901ba24ac95da99fa3","id":"microsoft.aspnetcore.app.runtime.linux-x64","bytes":12966962,"rawSHA256":null,"version":"10.0.15","normalized":null,"implicit":true},"microsoft.aspnetcore.app.runtime.win-x64":{"rawSHA512":"19b0b506c3ba8ea54e8fb2eb01a806ef1e108bdac5b7bca53841ea5e6670fa4f7378a30096df00e10047b740ba5c383f70df772c1b0bfd65933c46409c4589ee","id":"microsoft.aspnetcore.app.runtime.win-x64","bytes":12795364,"rawSHA256":null,"version":"10.0.15","normalized":null,"implicit":true},"microsoft.netcore.app.host.linux-x64":{"rawSHA512":"bb66a8280ab889b6b260b0e86b8f2a111b4da3a6d067154dafe0c28fd3d26b6e67b17055cdb3719f245b416719add0065def63f38f6f4f186a0652a1af352b4c","id":"microsoft.netcore.app.host.linux-x64","bytes":5566814,"rawSHA256":null,"version":"10.0.15","normalized":null,"implicit":true},"microsoft.netcore.app.host.win-x64":{"rawSHA512":"57c812c49749de9d7aec1e0f6cd349c9372413cf62bfbe13e1a749997d55dddf8aa3c1e65d52d9c42a1825e3633b998447dc261bcdce5681732861b03deefbd8","id":"microsoft.netcore.app.host.win-x64","bytes":5800874,"rawSHA256":null,"version":"10.0.15","normalized":null,"implicit":true},"microsoft.windowsdesktop.app.runtime.win-x64":{"rawSHA512":"bd4a7efb7cfbd8e36e065cc2a654e18a264776e9d820b187dfb6df2a3cf3586ef99ec96589eabd9badc348691fe9bb9dcc080e5d0f7ffa358179a4b8aa551413","id":"microsoft.windowsdesktop.app.runtime.win-x64","bytes":39196103,"rawSHA256":null,"version":"10.0.15","normalized":null,"implicit":true}}''')
 
 if __name__ == '__main__':
