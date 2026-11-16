@@ -20,6 +20,7 @@ import subprocess
 import sys
 import time
 import urllib.request
+from urllib.parse import urlsplit
 import xml.etree.ElementTree as ET
 import zipfile
 import zlib
@@ -473,8 +474,52 @@ def linux_parent(ctx, argv):
         return result
 
 
-def bounded_get(ctx, url, destination, limit, total, expected_size=None, expected_sha512=None, response_metadata=None):
-    need(url.startswith("https://api.nuget.org/v3-flatcontainer/") or url.startswith("https://api.nuget.org/v3/"), "UNEXPECTED_NUGET_ORIGIN")
+def canonical_metadata_url(url):
+    need(type(url) is str and 1 <= len(url) <= 2048 and url.isascii()
+         and not any(ord(char) <= 32 or ord(char) == 127 for char in url), "METADATA_URL_SYNTAX")
+    need("\\" not in url and "%" not in url, "METADATA_URL_ENCODING_OR_BACKSLASH")
+    need("?" not in url and "#" not in url, "METADATA_URL_QUERY_OR_FRAGMENT")
+    try:
+        parts = urlsplit(url)
+    except ValueError:
+        raise Failure("METADATA_URL_SYNTAX") from None
+    need(parts.username is None and parts.password is None, "METADATA_URL_USERINFO")
+    need(url.startswith("https://") and parts.scheme == "https"
+         and parts.netloc in ("api.nuget.org", "api.nuget.org:443"), "METADATA_URL_ORIGIN")
+    segments = parts.path.split("/")
+    need(segments[0] == "" and len(segments) > 1 and all(segment and segment not in (".", "..")
+         and not segment.endswith(".") and re.fullmatch(r"[A-Za-z0-9_.~-]+", segment) for segment in segments[1:])
+         and parts.geturl() == url, "METADATA_URL_PATH_AMBIGUOUS")
+    return url  # Validate the exact string; never normalize an alias into an admitted member.
+
+
+def admit_metadata_url(url, allowed_urls):
+    need(type(allowed_urls) is tuple and 1 <= len(allowed_urls) <= 8 and all(type(member) is str for member in allowed_urls)
+         and len(set(allowed_urls)) == len(allowed_urls), "METADATA_URL_ALLOWLIST")
+    for member in allowed_urls:
+        canonical_metadata_url(member)
+    canonical_metadata_url(url)
+    need(url in allowed_urls, "METADATA_URL_NOT_IN_INDEX")
+    return url
+
+
+def advisory_index_urls(pages):
+    need(type(pages) is list and 1 <= len(pages) <= 8, "VULNERABILITY_PAGE_PARTITION")
+    need(all(type(page) is dict and type(page.get("@id")) is str and type(page.get("@name")) is str
+             and re.fullmatch(r"[A-Za-z0-9_-]{1,64}", page["@name"])
+             and type(page.get("@updated")) is str and 1 <= len(page["@updated"]) <= 128 for page in pages),
+         "VULNERABILITY_INDEX_SHAPE")
+    urls = tuple(canonical_metadata_url(page["@id"]) for page in pages)
+    need(len(set(urls)) == len(urls) and len({page["@name"] for page in pages}) == len(pages), "VULNERABILITY_INDEX_AMBIGUOUS")
+    return urls
+
+
+def bounded_get(ctx, url, destination, limit, total, expected_size=None, expected_sha512=None, response_metadata=None, metadata_urls=None):
+    if response_metadata is None:
+        need(metadata_urls is None, "METADATA_URL_ARGUMENT_PAIR")
+        need(url.startswith("https://api.nuget.org/v3-flatcontainer/") or url.startswith("https://api.nuget.org/v3/"), "UNEXPECTED_NUGET_ORIGIN")
+    else:
+        admit_metadata_url(url, metadata_urls)
     cap = min(60, ctx.get("nugetAcquisitionDeadlineMono", time.monotonic() + 60) - time.monotonic())
     need(cap > 0, "NUGET_ACQUISITION_DEADLINE")
     stage(ctx, "nuget-input-transport", cap)
@@ -482,7 +527,8 @@ def bounded_get(ctx, url, destination, limit, total, expected_size=None, expecte
     class DenyRedirect(urllib.request.HTTPRedirectHandler):
         def redirect_request(self, request, response, code, message, headers, new_url):
             raise Failure("NUGET_REDIRECT_DENIED")
-    opener = urllib.request.build_opener(DenyRedirect())
+    opener = (urllib.request.build_opener(urllib.request.ProxyHandler({}), DenyRedirect())
+              if response_metadata is not None else urllib.request.build_opener(DenyRedirect()))
     request = urllib.request.Request(url, headers={"Accept-Encoding": "identity", "User-Agent": "Matching10-BoundedInput/1"})
     with opener.open(request, timeout=min(30, cap, remaining(ctx))) as response, Path(destination).open("xb") as out:
         if response_metadata is not None:
@@ -568,7 +614,7 @@ def decode_metadata_bytes(ctx, wire, destination, encoding, decoded_limit, total
         entry.update(decodedBytes=decoded, decodedSHA256=digest.hexdigest(), decodedComplete=complete)
 
 
-def bounded_json_get(ctx, url, destination, limit, total, phase):
+def bounded_json_get(ctx, url, destination, limit, total, phase, allowed_urls=None):
     need(phase in ("service-index", "vulnerability-index") or re.fullmatch(r"vulnerability-page-[0-7]", phase), "METADATA_PHASE_IDENTITY")
     entry = {"phase": phase, "status": "STARTED", "contentEncoding": "unknown", "rawBytes": 0,
              "rawSHA256": None, "rawComplete": False, "decodedBytes": 0, "decodedSHA256": None, "decodedComplete": False,
@@ -576,8 +622,17 @@ def bounded_json_get(ctx, url, destination, limit, total, phase):
     response_metadata = {}
     try:
         metadata_transport_receipt(ctx, entry)
+        if phase == "service-index":
+            need(allowed_urls is None, "METADATA_FIXED_URL_NO_OVERRIDE")
+            admitted_urls = ("https://api.nuget.org/v3/index.json",)
+        elif phase == "vulnerability-index":
+            need(allowed_urls is None, "METADATA_FIXED_URL_NO_OVERRIDE")
+            admitted_urls = ("https://api.nuget.org/v3/vulnerabilities/index.json",)
+        else:
+            need(allowed_urls is not None, "METADATA_PAGE_ALLOWLIST_REQUIRED")
+            admitted_urls = allowed_urls
         wire = Path(destination).with_suffix(Path(destination).suffix + ".wire")
-        raw = bounded_get(ctx, url, wire, limit, total, response_metadata=response_metadata)
+        raw = bounded_get(ctx, url, wire, limit, total, response_metadata=response_metadata, metadata_urls=admitted_urls)
         entry.update(response_metadata)
         decoded_limit = limit - raw["bytes"]
         need(decoded_limit >= 0, "METADATA_COMBINED_BYTES_CAP")
@@ -708,13 +763,13 @@ def advisory_guard(ctx, specs, total):
     index = root / "index.json"
     index_record, pages = bounded_json_get(ctx, resources[0], index, 2097152, total, "vulnerability-index")
     records.append(index_record)
-    need(isinstance(pages, list) and 1 <= len(pages) <= 8, "VULNERABILITY_PAGE_PARTITION")
+    page_urls = advisory_index_urls(pages)
     selected = {x["id"].lower(): x["version"] for x in specs}; advisory_bytes = 0
     for number, page in enumerate(pages):
         url = page["@id"]
-        need(url.startswith("https://api.nuget.org/v3/vulnerabilities/"), "ADVISORY_ORIGIN")
+        admit_metadata_url(url, page_urls)
         path = root / (str(number) + ".json")
-        record, data = bounded_json_get(ctx, url, path, 33554432 - advisory_bytes, total, "vulnerability-page-" + str(number))
+        record, data = bounded_json_get(ctx, url, path, 33554432 - advisory_bytes, total, "vulnerability-page-" + str(number), allowed_urls=page_urls)
         advisory_bytes += record["bytes"]; need(advisory_bytes <= 33554432, "ADVISORY_BYTE_CAP")
         record["updated"] = page.get("@updated"); records.append(record)
         data = vulnerability_page_entries(data)

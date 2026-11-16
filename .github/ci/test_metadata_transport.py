@@ -13,11 +13,12 @@ import time
 from types import SimpleNamespace
 import unittest
 import urllib.request
+from urllib.parse import urlsplit
 import zlib
 
 TREE = ast.parse(Path(__file__).with_name("hosted_caps.py").read_text(encoding="utf-8"))
 NODES = {node.name: node for node in TREE.body if isinstance(node, (ast.FunctionDef, ast.ClassDef))}
-NAMES = ("Failure", "need", "unique", "load", "save", "remaining", "bounded_get", "metadata_transport_receipt", "decode_metadata_bytes", "bounded_json_get", "vulnerability_page_entries")
+NAMES = ("Failure", "need", "unique", "load", "save", "remaining", "canonical_metadata_url", "admit_metadata_url", "advisory_index_urls", "bounded_get", "metadata_transport_receipt", "decode_metadata_bytes", "bounded_json_get", "vulnerability_page_entries")
 CODE = compile(ast.fix_missing_locations(ast.Module(body=[NODES[name] for name in NAMES], type_ignores=[])), "<isolated-metadata-source>", "exec")
 URL = "https://api.nuget.org/v3/vulnerabilities/index.json"
 PLAIN = b'{"key":"value"}'
@@ -57,7 +58,7 @@ class MetadataTransportFixtures(unittest.TestCase):
         self.assertTrue(self.root.is_relative_to(parent))
         self.serial = 0
         self.parses = 0
-        self.env = {"Path": Path, "hashlib": hashlib, "json": json, "os": os, "re": re, "time": time, "zlib": zlib}
+        self.env = {"Path": Path, "hashlib": hashlib, "json": json, "os": os, "re": re, "time": time, "zlib": zlib, "urlsplit": urlsplit}
         exec(CODE, self.env)
         original_load = self.env["load"]
 
@@ -75,7 +76,7 @@ class MetadataTransportFixtures(unittest.TestCase):
         self.env["budget"] = lambda ctx, force=False: self.env["remaining"](ctx)
         self.env["stage"] = lambda ctx, name, cap: ctx.setdefault("stages", []).append((name, cap))
 
-    def run_case(self, body, encoding="identity", limit=100000, headers=None, total=None, url=URL, expired=False):
+    def run_case(self, body, encoding="identity", limit=100000, headers=None, total=None, url=URL, expired=False, phase="vulnerability-index", allowed_urls=None):
         self.serial += 1
         run = self.root / str(self.serial)
         run.mkdir()
@@ -93,9 +94,9 @@ class MetadataTransportFixtures(unittest.TestCase):
             self.assertEqual(request.full_url, url)
             return self.response
 
-        self.env["urllib"] = SimpleNamespace(request=SimpleNamespace(HTTPRedirectHandler=urllib.request.HTTPRedirectHandler, Request=urllib.request.Request, build_opener=lambda *args: SimpleNamespace(open=open_offline)))
+        self.env["urllib"] = SimpleNamespace(request=SimpleNamespace(HTTPRedirectHandler=urllib.request.HTTPRedirectHandler, ProxyHandler=urllib.request.ProxyHandler, Request=urllib.request.Request, build_opener=lambda *args: SimpleNamespace(open=open_offline)))
         try:
-            return self.env["bounded_json_get"](self.context, url, run / "index.json", limit, [0] if total is None else total, "vulnerability-index")
+            return self.env["bounded_json_get"](self.context, url, run / "index.json", limit, [0] if total is None else total, phase, allowed_urls=allowed_urls)
         finally:
             self.assertEqual(self.context["deadlineMono"], deadline)
 
@@ -170,7 +171,7 @@ class MetadataTransportFixtures(unittest.TestCase):
         self.assertFalse(self.receipt()["parseAttempted"])
 
     def test_receipt_has_no_body_url_path_query_or_environment(self):
-        self.denied("METADATA_CONTENT_ENCODING_UNSUPPORTED", PLAIN, "br;ENV_SENTINEL", url=URL + "?private=ENV_SENTINEL")
+        self.denied("METADATA_URL_QUERY_OR_FRAGMENT", PLAIN, "br;ENV_SENTINEL", url=URL + "?private=ENV_SENTINEL")
         encoded = json.dumps(self.receipt())
         for forbidden in ("ENV_SENTINEL", "https://", "private", str(self.root), PLAIN.decode()):
             self.assertNotIn(forbidden, encoded)
@@ -194,10 +195,17 @@ class MetadataTransportFixtures(unittest.TestCase):
         self.serial += 1; run = self.root / str(self.serial); run.mkdir()
         self.context = {"runRoot": run, "deadlineMono": time.monotonic() + 30}
         response = Response(raw, [("Content-Encoding", "gzip")], URL)
-        self.env["urllib"] = SimpleNamespace(request=SimpleNamespace(HTTPRedirectHandler=urllib.request.HTTPRedirectHandler, Request=urllib.request.Request, build_opener=lambda *args: SimpleNamespace(open=lambda *args, **kwargs: response)))
+        self.env["urllib"] = SimpleNamespace(request=SimpleNamespace(HTTPRedirectHandler=urllib.request.HTTPRedirectHandler, ProxyHandler=urllib.request.ProxyHandler, Request=urllib.request.Request, build_opener=lambda *args: SimpleNamespace(open=lambda *args, **kwargs: response)))
         record = self.env["bounded_get"](self.context, URL, run / "raw.bin", len(raw), [0], expected_size=len(raw), expected_sha512=hashlib.sha512(raw).hexdigest())
         self.assertEqual((run / "raw.bin").read_bytes(), raw)
         self.assertEqual(record["sha512"], hashlib.sha512(raw).hexdigest())
+
+    def test_exact_index_member_page_uses_metadata_gate(self):
+        urls = self.env["advisory_index_urls"](ACTUAL_INDEX_PAGES)
+        record, data = self.run_case(b"{}", url=urls[0], phase="vulnerability-page-0", allowed_urls=urls)
+        self.assertEqual(data, {})
+        self.assertEqual(record["url"], urls[0])
+        self.assertEqual(self.receipt()["phase"], "vulnerability-page-0")
 
     def test_documented_exact_empty_vulnerability_array_is_valid(self):
         self.assertEqual(self.env["vulnerability_page_entries"]([]), {})
@@ -206,6 +214,71 @@ class MetadataTransportFixtures(unittest.TestCase):
         with self.assertRaises(self.env["Failure"]) as raised:
             self.env["vulnerability_page_entries"]([{"versions": "[1.0,2.0)"}])
         self.assertEqual(raised.exception.cause, "VULNERABILITY_PAGE_SHAPE")
+
+
+ACTUAL_INDEX_PAGES = [
+    {"@id": "https://api.nuget.org/v3-vulnerabilities/2026.11.14.05.29.55/vulnerability.base.json", "@name": "base", "@updated": "2026-11-14T05:29:55.8176483Z"},
+    {"@id": "https://api.nuget.org/v3-vulnerabilities/2026.11.14.05.29.55/2026.11.14.05.29.55/vulnerability.update.json", "@name": "update", "@updated": "2026-11-14T05:29:55.8176483Z"},
+]
+
+
+class MetadataOriginFixtures(unittest.TestCase):
+    def setUp(self):
+        self.env = {"re": re, "urlsplit": urlsplit, "urllib": SimpleNamespace(request=urllib.request)}
+        names = ("Failure", "need", "canonical_metadata_url", "admit_metadata_url", "advisory_index_urls", "bounded_get")
+        module = ast.Module(body=[NODES[name] for name in names], type_ignores=[])
+        exec(compile(ast.fix_missing_locations(module), "<isolated-origin-source>", "exec"), self.env)
+        self.urls = self.env["advisory_index_urls"](ACTUAL_INDEX_PAGES)
+
+    def denied_url(self, url):
+        with self.assertRaises(self.env["Failure"]):
+            self.env["canonical_metadata_url"](url)
+
+    def test_actual_base_and_nested_update_members(self):
+        self.assertEqual(self.urls, tuple(page["@id"] for page in ACTUAL_INDEX_PAGES))
+        for url in self.urls:
+            self.assertEqual(self.env["admit_metadata_url"](url, self.urls), url)
+
+    def test_same_host_nonmember_is_not_admitted(self):
+        with self.assertRaises(self.env["Failure"]) as raised:
+            self.env["admit_metadata_url"]("https://api.nuget.org/v3-vulnerabilities/not-in-index.json", self.urls)
+        self.assertEqual(raised.exception.cause, "METADATA_URL_NOT_IN_INDEX")
+
+    def test_foreign_userinfo_scheme_and_non443_denied(self):
+        for url in ("https://evil.invalid/x.json", "https://api.nuget.org.evil.invalid/x.json", "http://api.nuget.org/x.json", "https://user:pass@api.nuget.org/x.json", "https://api.nuget.org:444/x.json", "https://api.nuget.org:0443/x.json"):
+            with self.subTest(url=url):
+                self.denied_url(url)
+
+    def test_query_fragment_backslash_and_traversal_denied(self):
+        for suffix in ("?x=1", "#x", "?", "#", "/../x.json", "/./x.json", "/%2e%2e/x.json", "/%252e%252e/x.json", "/..\\x.json"):
+            with self.subTest(suffix=suffix):
+                self.denied_url(self.urls[0] + suffix)
+
+    def test_ambiguous_host_path_and_controls_denied(self):
+        for url in ("https://API.NUGET.ORG/x.json", "https://api.nuget.org./x.json", "https://api.nuget.org//x.json", "https://api.nuget.org/x./y.json", " " + self.urls[0], self.urls[0] + "\n", "https://api.nuget.org/\u202ex.json"):
+            with self.subTest(url=url):
+                self.denied_url(url)
+
+    def test_index_and_allowlist_limit_shape_and_duplicates_denied(self):
+        for pages in ([], ACTUAL_INDEX_PAGES * 5, [ACTUAL_INDEX_PAGES[0], ACTUAL_INDEX_PAGES[0]], [{"@id": self.urls[0]}]):
+            with self.subTest(pages=len(pages)):
+                with self.assertRaises(self.env["Failure"]):
+                    self.env["advisory_index_urls"](pages)
+        for allowed in (None, list(self.urls), (self.urls[0], self.urls[0]), ({},)):
+            with self.assertRaises(self.env["Failure"]):
+                self.env["admit_metadata_url"](self.urls[0], allowed)
+
+    def test_raw_origin_does_not_gain_metadata_page_namespace(self):
+        with self.assertRaises(self.env["Failure"]) as raised:
+            self.env["bounded_get"]({}, self.urls[0], "unused", 1000, [0])
+        self.assertEqual(raised.exception.cause, "UNEXPECTED_NUGET_ORIGIN")
+
+    def test_redirect_is_denied_even_for_an_admitted_member(self):
+        node = next(n for n in ast.walk(NODES["bounded_get"]) if isinstance(n, ast.ClassDef) and n.name == "DenyRedirect")
+        exec(compile(ast.fix_missing_locations(ast.Module(body=[node], type_ignores=[])), "<isolated-no-redirect-source>", "exec"), self.env)
+        with self.assertRaises(self.env["Failure"]) as raised:
+            self.env["DenyRedirect"]().redirect_request(None, None, 302, "", {}, self.urls[0])
+        self.assertEqual(raised.exception.cause, "NUGET_REDIRECT_DENIED")
 
 
 if __name__ == "__main__":

@@ -66,7 +66,7 @@ jobs:
           python-version: '3.12'
       - name: Existing native verification under actual hosted own caps
         # No setup-dotnet action or SDK command may run before the actual cap/input gate.
-        run: python .github/ci/hosted_caps.py --rid ${{ matrix.rid }} --expected-controller-sha256 c678b6f8d9824b7d0b4f6d27689faa928288f3d381f8091b2ddfed960d5ff6ea --expected-payload-sha256 202fe05e984248eabeccfde4d5954e8de33f6d9fc2b7b4fe037cf4122e191f79
+        run: python .github/ci/hosted_caps.py --rid ${{ matrix.rid }} --expected-controller-sha256 65527c5d00942e5ea47d9cc3cf252afa9af9b8c91956e69c99d6cfe8e7bff642 --expected-payload-sha256 202fe05e984248eabeccfde4d5954e8de33f6d9fc2b7b4fe037cf4122e191f79
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
         with:
