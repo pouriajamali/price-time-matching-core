@@ -99,17 +99,64 @@ def head(workspace):
     return value
 
 
+def windows_host_policy(observation):
+    # Retain the existing win25 family; add only this documented image tuple.
+    image_ok = (observation["imageOS"] == "win25" or
+                (observation["imageOS"] == "win25-vs2026" and observation["imageVersion"] == "20261103.298.1"))
+    version = observation["ntVersion"]
+    need(image_ok and observation["runnerOS"] == "Windows" and observation["runnerArch"] == "X64"
+         and observation["system"] == "Windows" and observation["pointerBits"] == 64
+         and (version["major"], version["minor"], version["build"], version["productType"]) == (10, 0, 26100, 3)
+         and observation["processMachine"] == 0 and observation["nativeMachine"] == 0x8664,
+         "UNSUPPORTED_WINDOWS_HOSTED_IMAGE", json.dumps(observation, sort_keys=True))
+
+
+def windows_host_observation():
+    from ctypes import wintypes as T
+    class VERSION(ctypes.Structure):
+        _fields_ = [("size", T.DWORD), ("major", T.DWORD), ("minor", T.DWORD), ("build", T.DWORD),
+                    ("platform", T.DWORD), ("servicePack", T.WCHAR * 128), ("servicePackMajor", T.WORD),
+                    ("servicePackMinor", T.WORD), ("suiteMask", T.WORD), ("productType", T.BYTE), ("reserved", T.BYTE)]
+    native = ctypes.WinDLL("ntdll", use_last_error=True)
+    native.RtlGetVersion.argtypes = [ctypes.POINTER(VERSION)]; native.RtlGetVersion.restype = T.LONG
+    version = VERSION(); version.size = ctypes.sizeof(version)
+    need(native.RtlGetVersion(ctypes.byref(version)) == 0, "WINDOWS_RAW_VERSION_API")
+    kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel.GetCurrentProcess.argtypes = []; kernel.GetCurrentProcess.restype = T.HANDLE
+    kernel.IsWow64Process2.argtypes = [T.HANDLE, ctypes.POINTER(T.WORD), ctypes.POINTER(T.WORD)]
+    kernel.IsWow64Process2.restype = T.BOOL
+    process_machine, native_machine = T.WORD(), T.WORD()
+    need(kernel.IsWow64Process2(kernel.GetCurrentProcess(), ctypes.byref(process_machine), ctypes.byref(native_machine)),
+         "WINDOWS_RAW_ARCH_API", str(ctypes.get_last_error()))
+    return {"imageOS": os.environ.get("ImageOS"), "imageVersion": os.environ.get("ImageVersion"),
+            "runnerOS": os.environ.get("RUNNER_OS"), "runnerArch": os.environ.get("RUNNER_ARCH"),
+            "system": platform.system(), "machine": platform.machine(), "platformVersion": platform.version(),
+            "platformRelease": platform.release(), "pointerBits": ctypes.sizeof(ctypes.c_void_p) * 8,
+            "ntVersion": {"major": version.major, "minor": version.minor, "build": version.build,
+                          "productType": version.productType},
+            "processMachine": process_machine.value, "nativeMachine": native_machine.value}
+
+
 def source_event(expected_controller, expected_payload, rid):
     need(os.environ.get("GITHUB_ACTIONS") == "true" and os.environ.get("RUNNER_ENVIRONMENT") == "github-hosted", "HOSTED_ONLY")
-    expected_os, image = ("Windows", "win25") if rid == "win-x64" else ("Linux", "ubuntu24")
+    expected_os = "Windows" if rid == "win-x64" else "Linux"
     need(platform.system() == expected_os and os.environ.get("RUNNER_OS") == expected_os
-         and os.environ.get("RUNNER_ARCH") == "X64" and os.environ.get("ImageOS") == image, "NATIVE_ROW_OS_ARCH")
+         and os.environ.get("RUNNER_ARCH") == "X64", "NATIVE_ROW_OS_ARCH")
+    if rid == "linux-x64":
+        need(os.environ.get("ImageOS") == "ubuntu24", "NATIVE_ROW_OS_ARCH")
     need(os.environ.get("GITHUB_REPOSITORY") == REPOSITORY, "REPOSITORY_IDENTITY")
     workspace = Path(os.environ["GITHUB_WORKSPACE"]).resolve()
     own = workspace / ".github" / "ci" / "hosted_caps.py"
     payload = workspace / ".github" / "ci" / "matching10-native.ps1"
     need(Path(__file__).resolve() == own and sha(own) == expected_controller, "CONTROLLER_SOURCE_IDENTITY")
     need(sha(payload) == expected_payload, "PAYLOAD_SOURCE_IDENTITY")
+    if rid == "win-x64":
+        host_observation = windows_host_observation()
+        windows_host_policy(host_observation)
+    else:
+        host_observation = {"imageOS": os.environ.get("ImageOS"), "imageVersion": os.environ.get("ImageVersion"),
+                            "runnerOS": os.environ.get("RUNNER_OS"), "runnerArch": os.environ.get("RUNNER_ARCH"),
+                            "system": platform.system(), "machine": platform.machine()}
     source = os.environ.get("GITHUB_SHA", "")
     need(re.fullmatch(r"[0-9a-f]{40}", source) and head(workspace) == source, "CHECKOUT_HEAD_IDENTITY")
     event = os.environ.get("GITHUB_EVENT_NAME")
@@ -135,7 +182,7 @@ def source_event(expected_controller, expected_payload, rid):
     need(props.findtext(".//TargetFramework") == "net10.0" and props.findtext(".//RuntimeFrameworkVersion") == "10.0.15"
          and set(props.findtext(".//RuntimeIdentifiers").split(";")) == {"win-x64", "linux-x64"}, "SOURCE_FRAMEWORK_RID_GRAPH")
     return workspace, payload, {"event": event, "ref": ref, "source": source, "eventSHA256": sha(os.environ["GITHUB_EVENT_PATH"]),
-                                "controllerSHA256": expected_controller, "payloadSHA256": expected_payload}
+                                "controllerSHA256": expected_controller, "payloadSHA256": expected_payload, "hostObservation": host_observation}
 
 
 def linux_start(pid):
@@ -772,7 +819,7 @@ def export_evidence(ctx):
     target = Path(ctx["workspace"]) / "artifacts/hosted-cap-proof"
     target.mkdir(parents=True, exist_ok=True)
     total = 0
-    for name in ("caps.json", "held-ready.json", "release.json", "package-admission.json", "selected-advisory.json", "denial-proof.json", "child-result.json", "parent-terminal.json"):
+    for name in ("host-observation.json", "caps.json", "held-ready.json", "release.json", "package-admission.json", "selected-advisory.json", "denial-proof.json", "child-result.json", "parent-terminal.json"):
         source = Path(ctx["runRoot"]) / name
         if source.exists():
             total += source.stat().st_size; need(total <= 2097152, "INCREMENTAL_PROOF_CAP")
@@ -801,6 +848,11 @@ def parent(args):
            "sdkStage": str(temporary / ("sdk10-input-10-" + args.rid)), "deadlineMono": now + 1140,
            "unit": "matching10-ci-" + nonce + ".service", "uid": os.getuid() if hasattr(os, "getuid") else None,
            "gid": os.getgid() if hasattr(os, "getgid") else None, "environment": env, "SDKProcessesStarted": 0}
+    host_proof = run / "host-observation.json"
+    save(host_proof, {"status": "SUPPORTED_HOSTED_NATIVE_OS_OBSERVED", "source": binding["source"],
+                      "controllerSHA256": binding["controllerSHA256"], "payloadSHA256": binding["payloadSHA256"],
+                      **binding["hostObservation"]})
+    ctx["environment"]["MATCHING10_HOST_OBSERVATION"] = str(host_proof)
     path = run / "context.json"; save(path, ctx)
     argv = [sys.executable, str(Path(__file__).resolve()), "--child", str(path), "--context-sha256", sha(path)]
     try:

@@ -29,6 +29,36 @@
         "sha256": "d7a68596ab69b06f51ca278a6545148e4269a9381c26d597c13df5d88e08cf5b",
         "url": "https://api.nuget.org/v3-flatcontainer/microsoft.netcore.app.runtime.win-x64/10.0.14/microsoft.netcore.app.runtime.win-x64.10.0.14.nupkg"
       }
+    },
+    {
+      "id": "Microsoft.NETCore.App.Runtime.win-x64",
+      "version": "10.0.15",
+      "license": "MIT",
+      "copyright": "\u00a9 Microsoft Corporation. All rights reserved.",
+      "nugetContentHash": "vzCVKwBmeXZ31VkaU956oQE1zda/pweaw1q0vtnRWzivoPa4jyz9zVrmhrora1UJlPkzfBteQHf9bOYAF2ZuVw==",
+      "rawSignedNupkgSha512Base64": "MEGAkRGHrAXYA2t/Lo0mDxH+/O5NLqgWTcVh70iOZJTpoOCL/jKfOgDqYoDi3W9WcnviL4DhMl+5lWC8cxttSw==",
+      "repositoryCommit": "8e0f8ed2312954727f8919d7d1c2f78b483b4ee7",
+      "licenseSource": {
+        "kind": "package",
+        "file": "LICENSE.TXT",
+        "sha256": "d7a68596ab69b06f51ca278a6545148e4269a9381c26d597c13df5d88e08cf5b",
+        "url": "https://api.nuget.org/v3-flatcontainer/microsoft.netcore.app.runtime.win-x64/10.0.15/microsoft.netcore.app.runtime.win-x64.10.0.15.nupkg"
+      }
+    },
+    {
+      "id": "Microsoft.NETCore.App.Runtime.linux-x64",
+      "version": "10.0.15",
+      "license": "MIT",
+      "copyright": "\u00a9 Microsoft Corporation. All rights reserved.",
+      "nugetContentHash": "ALsQzH86bVhGmWjv/sESo973cpasVCDicswfJt3bDB7/IUkEs17ilOCyxXbiAGDyCFylNDSAEaFyNwdoU/mAQw==",
+      "rawSignedNupkgSha512Base64": "Ak6y3EEqwNT/ZL5WEAoGbjxju8MisXpnRxYRynRifotaKEadhhWk5/z2KTvNbnRyAvMqrbN21TSnJY4NxZShxQ==",
+      "repositoryCommit": "8e0f8ed2312954727f8919d7d1c2f78b483b4ee7",
+      "licenseSource": {
+        "kind": "package",
+        "file": "LICENSE.TXT",
+        "sha256": "cfc21f5e8bd655ae997eec916138b707b1d290b83272c02a95c9f821b8c87310",
+        "url": "https://api.nuget.org/v3-flatcontainer/microsoft.netcore.app.runtime.linux-x64/10.0.15/microsoft.netcore.app.runtime.linux-x64.10.0.15.nupkg"
+      }
     }
   ],
   "excludedBuildTools": [

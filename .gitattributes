@@ -1,3 +1,5 @@
 * text=auto eol=lf
 *.zip binary
 *.bin binary
+vendor/notices/dotnet-runtime-10.0.15/win-x64/LICENSE.TXT -text
+vendor/notices/dotnet-runtime-10.0.15/win-x64/THIRD-PARTY-NOTICES.TXT -text

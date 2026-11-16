@@ -1,6 +1,17 @@
 # Original native cases, guarded inputs admitted before build. Source/event/caps are owned by hosted_caps.py.
 $ErrorActionPreference = 'Stop'
-if ($env:GITHUB_ACTIONS -ne 'true' -or $env:ImageOS -notin @('win25','ubuntu24')) { throw 'Hosted native rows only' }
+if ($env:GITHUB_ACTIONS -ne 'true') { throw 'Hosted native rows only' }
+if ($IsWindows) {
+  $imageAllowed = $env:ImageOS -ceq 'win25' -or ($env:ImageOS -ceq 'win25-vs2026' -and $env:ImageVersion -ceq '20261103.298.1')
+  if (-not $imageAllowed -or -not $env:MATCHING10_HOST_OBSERVATION) { throw 'Unsupported Windows hosted image' }
+  $hostProof = Get-Content -LiteralPath $env:MATCHING10_HOST_OBSERVATION -Raw | ConvertFrom-Json
+  if ($hostProof.status -cne 'SUPPORTED_HOSTED_NATIVE_OS_OBSERVED' -or $hostProof.source -cne $env:GITHUB_SHA -or
+      $hostProof.imageOS -cne $env:ImageOS -or $hostProof.imageVersion -cne $env:ImageVersion -or
+      $hostProof.system -cne 'Windows' -or $hostProof.runnerOS -cne 'Windows' -or $hostProof.runnerArch -cne 'X64' -or
+      $hostProof.pointerBits -ne 64 -or $hostProof.ntVersion.major -ne 10 -or $hostProof.ntVersion.minor -ne 0 -or
+      $hostProof.ntVersion.build -ne 26100 -or $hostProof.ntVersion.productType -ne 3 -or
+      $hostProof.processMachine -ne 0 -or $hostProof.nativeMachine -ne 34404) { throw 'Actual native Server2025/build26100/x64 proof mismatch' }
+} elseif ($env:ImageOS -cne 'ubuntu24') { throw 'Hosted native rows only' }
 if (-not $env:MATCHING10_PACKAGE_ADMISSION) { throw 'Package admission absent' }
 $admission = Get-Content -LiteralPath $env:MATCHING10_PACKAGE_ADMISSION -Raw | ConvertFrom-Json
 if ($admission.status -ne 'EXACT_PACKAGE_INPUTS_ADMITTED' -or $admission.source -ne $env:GITHUB_SHA) { throw 'Package admission/source mismatch' }
