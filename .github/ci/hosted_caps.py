@@ -270,6 +270,8 @@ def command(ctx, argv, name, cap, sdk=False, expected=0):
                     proc.wait(timeout=3)
                 except subprocess.TimeoutExpired:
                     proc.kill(); proc.wait(timeout=3)
+            if name == "nuget-signatures":
+                ctx["signatureVerifyExitCode"] = proc.returncode if proc is not None else None
     need(logfile.stat().st_size <= 8388608, "OWN_LOG_BUDGET")
     return logfile.read_text(encoding="utf-8", errors="replace")
 
@@ -440,7 +442,8 @@ def linux_parent(ctx, argv):
         group = Path(identity["cgroup"])
         terminal = not group.exists() or "populated 0" in (group / "cgroup.events").read_text()
         result = load(Path(ctx["runRoot"]) / "child-result.json")
-        need(result["status"] == "PASS" and result["naturalMembersBeforeExit"] == [identity["pid"]], "CHILD_PREEXIT_MEMBERSHIP")
+        need(result["status"] == "PASS", "CHILD_FAILED", json.dumps(result.get("error"), sort_keys=True))
+        need(result["naturalMembersBeforeExit"] == [identity["pid"]], "CHILD_PREEXIT_MEMBERSHIP")
         need(exit_code == 0 and terminal, "OWN_UNIT_NOT_NATURALLY_TERMINAL")
     except Exception as failure:
         error = {"cause": getattr(failure, "cause", "STARTER_EXCEPTION"), "detail": str(failure)[:2048]}
@@ -591,6 +594,90 @@ def advisory_guard(ctx, specs, total):
     return proof
 
 
+def signature_observations(text, selected, exit_code):
+    # Pure bounded parser: emit only expected package identities, enums and validated hashes.
+    need(len(selected) <= 24 and len(text) <= 524288, "SIGNATURE_DIAGNOSTIC_INPUT_CAP")
+    markers = list(re.finditer(r"(?mi)^Verifying\s+([^\r\n]+)\s*$", text))
+    expected = {spec["id"].lower() + "." + spec["version"]: spec for spec in selected}
+    partition = {}
+    unmatched = 0
+    for index, marker in enumerate(markers):
+        label = marker[1].strip().lower()
+        if label not in expected:
+            unmatched += 1; continue
+        body = text[marker.end():markers[index + 1].start() if index + 1 < len(markers) else len(text)]
+        partition.setdefault(label, []).append(body)
+    rows = []
+    for label, spec in expected.items():
+        bodies = partition.get(label, [])
+        sections = re.findall(r"Signature type:\s*(Author|Repository)(.*?)(?=Signature type:|\Z)", bodies[0], re.S | re.I) if len(bodies) == 1 else []
+        kinds = [kind.lower() for kind, _ in sections]
+        fingerprints = {"author": [], "repository": []}
+        for kind, section in sections:
+            for match in re.finditer(r"(?mi)^\s*SHA256 hash:\s*([0-9A-Fa-f: ]+)\s*$", section):
+                value = re.sub(r"[:\s]", "", match[1]).upper()
+                if re.fullmatch(r"[0-9A-F]{64}", value) and value not in fingerprints[kind.lower()]:
+                    fingerprints[kind.lower()].append(value)
+        fingerprints = {kind: values[:8] for kind, values in fingerprints.items()}
+        hashes = re.findall(r"(?mi)^Content hash:\s*([A-Za-z0-9+/=]+)\s*$", bodies[0]) if len(bodies) == 1 else []
+        normalized = hashes[0] if len(hashes) == 1 and len(hashes[0]) == 88 else None
+        if normalized is not None:
+            try:
+                if len(base64.b64decode(normalized, validate=True)) != 64:
+                    normalized = None
+            except ValueError:
+                normalized = None
+        if len(bodies) != 1 or unmatched or kinds.count("repository") > 1 or not kinds:
+            category = "PARSER_PARTITION_UNKNOWN"
+        elif "repository" not in kinds:
+            category = "ABSENT_REPOSITORY_SECTION"
+        elif not fingerprints["repository"]:
+            category = "PARSER_FINGERPRINT_FIELD_UNKNOWN"
+        elif REPO_CERT not in fingerprints["repository"]:
+            category = "OBSERVED_REPOSITORY_CERT_MISMATCH"
+        else:
+            category = "OBSERVED_REPOSITORY_PIN_MATCH"
+        rows.append({"id": spec["id"], "version": spec["version"], "implicit": spec["implicit"],
+            "rawSHA512Expected": spec["rawSHA512"], "normalizedContentHashExpected": spec["normalized"],
+            "normalizedContentHashObserved": normalized, "packageBlockCount": len(bodies),
+            "signatureKinds": kinds[:8], "observedFingerprintHexBySection": fingerprints,
+            "repositoryObservation": category, "verifyExitCode": exit_code})
+    return {"packages": rows, "observedBlockCount": len(markers), "unmatchedBlockCount": unmatched,
+            "verifyOutcome": "VERIFY_EXIT_UNKNOWN" if exit_code is None else "VERIFY_EXIT_ZERO" if exit_code == 0 else "VERIFY_EXIT_FAILURE"}
+
+
+def signature_diagnostic(ctx, selected, inspected, command_failure=None):
+    # Read only this command's bounded owned log; never export raw stdout/stderr, paths, queries or env.
+    log = Path(ctx["runRoot"]) / "nuget-signatures.log"
+    data = b""; complete = False
+    if log.is_file() and not log.is_symlink():
+        before = log.stat()
+        with log.open("rb") as stream:
+            data = stream.read(524289)
+        after = log.stat()
+        complete = len(data) <= 524288 and len(data) == before.st_size == after.st_size and before.st_mtime_ns == after.st_mtime_ns
+    exit_code = ctx.get("signatureVerifyExitCode")
+    observation = signature_observations(data[:524288].decode("utf-8", errors="replace"), selected, exit_code)
+    for row in observation["packages"]:
+        raw = inspected[row["id"].lower()]["raw"]
+        row["rawObservedBytes"] = raw["bytes"]
+        row["rawSHA256Observed"] = raw["sha256"]
+        row["rawSHA512Observed"] = raw["sha512"]
+    report = {"schema": "matching10/nuget-signature-diagnostic/v2", "status": "OBSERVABILITY_ONLY_NOT_ADMISSION",
+        "source": ctx["binding"]["source"], "rid": ctx["rid"],
+        "controllerSHA256": ctx["binding"]["controllerSHA256"], "payloadSHA256": ctx["binding"]["payloadSHA256"],
+        "inputCompleteWithinCap": complete, "inputBytesRead": len(data),
+        "inputSHA256": hashlib.sha256(data).hexdigest() if complete else None,
+        "commandReturnedSuccessfully": command_failure is None,
+        "SDKLaunchAttempts": ctx["SDKLaunchAttempts"], "SDKProcessesStartedByController": ctx["SDKProcessesStarted"],
+        "expectedRepositoryCertificate": REPO_CERT, "expectedImplicitAuthorCertificate": MS_CERT,
+        **observation, "historicalFailureCause": "UNKNOWN: prior actual verify output was not retained",
+        "policy": "All raw/normalized/signature pins unchanged. Structured public package/hash/kind/exit observations only; no raw stdout/stderr, path, query, environment or inferred admission"}
+    need(len(json.dumps(report).encode("utf-8")) <= 131072, "SIGNATURE_DIAGNOSTIC_JSON_CAP")
+    save(Path(ctx["runRoot"]) / "nuget-signature-diagnostic.json", report)
+    return report
+
+
 def input_policy(ctx, sdk, sdk_receipt):
     workspace = Path(ctx["workspace"]); root = Path(ctx["runRoot"])
     offline = root / "offline"; offline.mkdir(); packages = root / "packages"; packages.mkdir()
@@ -641,7 +728,13 @@ def input_policy(ctx, sdk, sdk_receipt):
         inspected[identity] = safe_package(raw, spec, directory)
         inspected[identity]["raw"] = observed; raws[identity] = raw
     ctx.pop("nugetAcquisitionDeadlineMono")
-    verify = command(ctx, [sdk, "nuget", "verify", "--all", *raws.values()], "nuget-signatures", 180, True)
+    try:
+        verify = command(ctx, [sdk, "nuget", "verify", "--all", *raws.values()], "nuget-signatures", 180, True)
+    except Exception as failure:
+        signature_diagnostic(ctx, selected, inspected, failure)
+        raise
+    signature_report = signature_diagnostic(ctx, selected, inspected)
+    need(signature_report["inputCompleteWithinCap"], "SIGNATURE_DIAGNOSTIC_INPUT_CAP")
     blocks = list(re.finditer(r"(?mi)^Verifying\s+([^\r\n]+)\s*$", verify))
     need(len(blocks) == len(selected), "SIGNATURE_RESULT_PARTITION")
     normalized = {}
@@ -658,7 +751,8 @@ def input_policy(ctx, sdk, sdk_receipt):
             need(hashes[0] == spec["normalized"], "NORMALIZED_HASH_MISMATCH", identity)
         signatures = {kind.lower(): section for kind, section in re.findall(
             r"Signature type:\s*(Author|Repository)(.*?)(?=Signature type:|\Z)", text, re.S | re.I)}
-        need("repository" in signatures and REPO_CERT in re.sub(r"\s", "", signatures["repository"]).upper(), "NUGET_REPOSITORY_SIGNER", identity)
+        need("repository" in signatures, "NUGET_REPOSITORY_SIGNATURE_ABSENT", identity)
+        need(REPO_CERT in re.sub(r"\s", "", signatures["repository"]).upper(), "NUGET_REPOSITORY_CERT_MISMATCH", identity)
         if spec["implicit"]:
             need("author" in signatures and MS_CERT in re.sub(r"\s", "", signatures["author"]).upper(), "MICROSOFT_IMPLICIT_SIGNER", identity)
         normalized[identity] = hashes[0]
@@ -819,7 +913,7 @@ def export_evidence(ctx):
     target = Path(ctx["workspace"]) / "artifacts/hosted-cap-proof"
     target.mkdir(parents=True, exist_ok=True)
     total = 0
-    for name in ("host-observation.json", "caps.json", "held-ready.json", "release.json", "package-admission.json", "selected-advisory.json", "denial-proof.json", "child-result.json", "parent-terminal.json"):
+    for name in ("nuget-signature-diagnostic.json", "host-observation.json", "caps.json", "held-ready.json", "release.json", "package-admission.json", "selected-advisory.json", "denial-proof.json", "child-result.json", "parent-terminal.json"):
         source = Path(ctx["runRoot"]) / name
         if source.exists():
             total += source.stat().st_size; need(total <= 2097152, "INCREMENTAL_PROOF_CAP")
