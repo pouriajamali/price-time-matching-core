@@ -1,0 +1,48 @@
+{
+  "schema": "sdk10-shared-hosted-inputs/v1",
+  "state": "SEALED_SOURCE_INPUTS_NOT_EXECUTION_ADMISSION",
+  "sdkVersion": "10.0.404",
+  "runtimeVersion": "10.0.15",
+  "projects": {
+    "10": "pouriajamali/price-time-matching-core",
+    "12": "pouriajamali/service-reliability-lab"
+  },
+  "inventory": {
+    "file": "sdk10-members.jsonl",
+    "bytes": 5015394,
+    "sha256": "edb30fd64e0d8e1c476e27a019dbb00fd7fe76989a5c3c991cbab16627f4d9cf"
+  },
+  "sourceLineage": {
+    "locationMapSha256": "d9a5fafdf7b8e4ef4e6919a7ab79f08e0b03f04f79f42529fd95bbe857f1d94e",
+    "originalMaterializerSha256": "78e94671f3426dd8b4013db3624c72ec76d10be07edccc35a594a45cc3f1358b",
+    "originalLinuxVerifierSha256": "e3e6ca1f5b3d86c1fab650aa6548a5afc84b934c68fecdc6bcd8b3950e2ddc24",
+    "sealedContractSha256": "f1772e7f4f5beb3618d671b3cf570c4455ea0ac68c71959a9c38b95f45cfb39d"
+  },
+  "rids": {
+    "win-x64": {
+      "name": "dotnet-sdk-10.0.404-win-x64.zip",
+      "url": "https://builds.dotnet.microsoft.com/dotnet/Sdk/10.0.404/dotnet-sdk-10.0.404-win-x64.zip",
+      "bytes": 303618098,
+      "rawSha256": "f94f02eb8451605a893164bbd9c14e7f00ac8914c370c322822e6ac91b106bcc",
+      "rawSha512": "330ddd2665b43cd2e428216a0d8ea1ac7bb19b5434fdc530e62010dc3b52823a620bf95489d628e1ed6f5122401793ee4887cca4a019122361a1231497f632ee",
+      "memberCount": 5578,
+      "expandedBytes": 812144112
+    },
+    "linux-x64": {
+      "name": "dotnet-sdk-10.0.404-linux-x64.tar.gz",
+      "url": "https://builds.dotnet.microsoft.com/dotnet/Sdk/10.0.404/dotnet-sdk-10.0.404-linux-x64.tar.gz",
+      "bytes": 243138887,
+      "rawSha256": "c0610757a818fde4b960d27a0ac421f273068a05dc5ec7abafc01dbf84e9cb4d",
+      "rawSha512": "577d0eb17fec33d029104c5c63a1ab0accc3e28776274abef2218dbac5af18d2109b5406d26b31d76f5c245215e3ba0926a94c20246c672c41847c9e1eb1dc50",
+      "memberCount": 5631,
+      "expandedBytes": 644980579
+    }
+  },
+  "boundaries": [
+    "Caller must provide actual own hosted-controller admission and unchanged per-project caps before invocation. This is not standalone execution permission.",
+    "Only existing SDK10 raw inputs, no installers/system SDK/multiversion root/new producer/SDK11.",
+    "No SDK executable or subprocess is invoked. Raw acquisition and fresh materialization occur only in the admitted hosted own-cap job.",
+    "Original full header/type/mode/size/path collision checks before target creation, payload hashes and exact final member set; no links or fallback.",
+    "No whole-closure/security/current-advisory claim. No raw SDK archive/tree is committed or uploaded."
+  ]
+}

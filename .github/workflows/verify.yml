@@ -50,7 +50,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: windows-latest
+          - os: windows-2025
             rid: win-x64
           - os: ubuntu-24.04
             rid: linux-x64
@@ -61,51 +61,12 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
-      - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
-        with:
-          dotnet-version: '10.0.404'
-      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # existing trusted vendor starter
         with:
           python-version: '3.12'
-      - name: Locked source tests
-        shell: pwsh
-        run: |
-          New-Item -ItemType Directory -Path artifacts -ErrorAction Stop | Out-Null
-          dotnet restore PriceTimeMatching.slnx --locked-mode
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          dotnet build PriceTimeMatching.slnx -c Release --no-restore -m:1
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          $env:MATCHING_CAPACITY_EVIDENCE = Join-Path (Get-Location) 'artifacts/capacity-csharp.json'
-          dotnet run --project tests/Matching.Tests/Matching.Tests.csproj -c Release --no-build -- -result-xml artifacts/unit.xml
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-      - name: Independent capacity model in three interpreter modes
-        run: python tools/test_capacity_model.py --fixtures tests/Matching.Tests/Fixtures/capacity-model-v1.json --out artifacts/capacity-model --matrix
-      - name: Verify exact model membership, identities and application cap
-        run: python tools/test_capacity_model.py --fixtures tests/Matching.Tests/Fixtures/capacity-model-v1.json --out artifacts/capacity-model --check-matrix
-      - name: Build exact clean native package
-        run: python tools/package.py --rid ${{ matrix.rid }} --commit ${{ github.sha }} --work artifacts/build --out artifacts/delivery
-      - name: Canonical pinned-key and attacker-signature regressions
-        run: python tools/test_verifier.py --out artifacts/verifier-tests
-      - name: Current advisory data for locked dependencies
-        run: python tools/audit_dependencies.py --out artifacts/dependency-advisories.json
-      - name: Extract and execute the actual package
-        shell: pwsh
-        run: |
-          $archive = @(Get-ChildItem artifacts/delivery -File)
-          if ($archive.Count -ne 1) { throw 'Exactly one archive required' }
-          python tools/extract_package.py --archive $archive[0].FullName --out 'artifacts/extracted with spaces'
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          $package = @(Get-ChildItem 'artifacts/extracted with spaces' -Directory)
-          if ($package.Count -ne 1) { throw 'Exactly one package root required' }
-          python tools/check_package.py --package $package[0].FullName --commit '${{ github.sha }}' --out artifacts/package-checks.json
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-      - name: Native deterministic replay and independent model
-        shell: pwsh
-        run: |
-          $package = @(Get-ChildItem 'artifacts/extracted with spaces' -Directory)
-          $name = if ($IsWindows) { 'matching.exe' } else { 'matching' }
-          python tools/native_demo.py --cli (Join-Path $package[0].FullName $name) --out artifacts/native-demo
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Existing native verification under actual hosted own caps
+        # No setup-dotnet action or SDK command may run before the actual cap/input gate.
+        run: python .github/ci/hosted_caps.py --rid ${{ matrix.rid }} --expected-controller-sha256 6d8d19cc35569966885f004ae973d1e46610e8abf8cfc134b43670704d9062fc --expected-payload-sha256 083dea3b90529e7115cb11902084cf86f74983b3b8710c5b4e39ddb7fd6a8b67
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
         with:
@@ -114,10 +75,12 @@ jobs:
           path: artifacts/delivery/*
           if-no-files-found: error
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
         with:
           retention-days: ${{ (startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch') && 7 || 3 }}
           name: proof-${{ matrix.rid }}
           path: |
+            artifacts/hosted-cap-proof/*.json
             artifacts/unit.xml
             artifacts/capacity-csharp.json
             artifacts/capacity-model/*.json

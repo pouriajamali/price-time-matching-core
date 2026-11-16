@@ -40,6 +40,7 @@ def main():
     prefix=f'price-time-matching-core-{a.tag}-source/'
     subprocess.run(['git','-C',str(ROOT),'-c','core.autocrlf=false','-c','core.eol=lf','archive','--format=zip','--prefix='+prefix,'--output='+str(source),a.commit],check=True)
     tracked=subprocess.check_output(['git','-C',str(ROOT),'ls-tree','-r','--name-only',a.commit],text=True).splitlines()
+    require({'tools/sdk10_hosted_inputs.py','tools/sdk10-inputs.lock.json','tools/sdk10-members.jsonl'} <= set(tracked), 'Required SDK10 SOURCE metadata missing')
     with zipfile.ZipFile(source) as packed:
         require({i.filename for i in packed.infolist() if not i.is_dir()}=={prefix+n for n in tracked}, 'Validation failed: check_release.py:41')
         for name in tracked:require(packed.read(prefix+name)==subprocess.check_output(['git','-C',str(ROOT),'show',a.commit+':'+name]), 'Validation failed: check_release.py:42')
