@@ -11,7 +11,7 @@ import hashlib
 import json
 import math
 import os
-from pathlib import Path, PurePosixPath
+from pathlib import Path, PurePosixPath, PureWindowsPath
 import platform
 import re
 import secrets
@@ -1231,7 +1231,7 @@ def capture_payload_diagnostic(ctx, role, logfile):
                           "status": value.get("status") if value.get("status") in ("ATTEMPT", "ACCEPTED", "REJECTED", "EXCEPTION") else "UNKNOWN",
                           "exitCode": value.get("exitCode") if type(value.get("exitCode")) is int else None}
             else:
-                allowed = {"ENTRY", "OUTPUT_SETUP", "VERIFIER_IMPORT", "TOOL_IDENTITY", "PRIVATE_KEY_SETUP", "DISPOSABLE_KEYGEN", "FIXTURE_SETUP", "SUITE_ENTRY", "ATTACKER_SIGN", "FIXTURE_VERIFY", "SUITE_COMPLETED", "FINAL_RECEIPT", "FINAL_RECEIPT_WRITTEN"}
+                allowed = {"ENTRY", "OUTPUT_SETUP", "VERIFIER_IMPORT", "TOOL_IDENTITY", "PRIVATE_KEY_SETUP", "PROGRAMDATA_INPUT", "DISPOSABLE_KEYGEN", "FIXTURE_SETUP", "SUITE_ENTRY", "ATTACKER_SIGN", "FIXTURE_VERIFY", "SUITE_COMPLETED", "FINAL_RECEIPT", "FINAL_RECEIPT_WRITTEN"}
                 lifecycle = {"phase": value.get("phase") if value.get("phase") in allowed else "UNKNOWN",
                              "testsRun": value.get("testsRun") if type(value.get("testsRun")) is int else None}
         except Exception:
@@ -1347,6 +1347,24 @@ def export_evidence(ctx):
             out.write(source.read_bytes())
 
 
+def forward_windows_programdata(parent_environment, child_environment, windows):
+    if not windows:
+        return {"applicable": False}
+    value = parent_environment.get("ProgramData")
+    need(type(value) is str, "PROGRAMDATA_MISSING")
+    need(len(value) > 0, "PROGRAMDATA_EMPTY")
+    need(not any(char in value for char in ("\x00", "\r", "\n")), "PROGRAMDATA_CONTROLS")
+    need(PureWindowsPath(value).is_absolute(), "PROGRAMDATA_NOT_ABSOLUTE")
+    try:
+        exists = Path(value).is_dir()
+    except OSError:
+        raise Failure("PROGRAMDATA_DIRECTORY_METADATA_UNKNOWN") from None
+    need(exists, "PROGRAMDATA_NOT_DIRECTORY")
+    child_environment["ProgramData"] = value  # Exact actual parent value; no fallback, trimming or normalization.
+    return {"applicable": True, "present": True, "nonempty": True, "absolute": True, "existingDirectory": True,
+            "valueSHA256": hashlib.sha256(value.encode("utf-8", errors="surrogatepass")).hexdigest()}
+
+
 def parent(args):
     workspace, payload, binding = source_event(args.expected_controller_sha256, args.expected_payload_sha256, args.rid, args.expected_verifier_sha256, args.purpose)
     if args.preflight_only:
@@ -1359,15 +1377,16 @@ def parent(args):
                "GITHUB_SHA", "GITHUB_EVENT_NAME", "GITHUB_EVENT_PATH", "GITHUB_REF", "GITHUB_RUN_ID", "GITHUB_RUN_ATTEMPT",
                "RUNNER_TEMP", "RUNNER_OS", "RUNNER_ARCH", "RUNNER_ENVIRONMENT", "ImageOS", "ImageVersion")
     env = {key: os.environ[key] for key in allowed if key in os.environ}
+    programdata = forward_windows_programdata(os.environ, env, os.name == "nt")
     ctx = {"rid": args.rid, "nonce": nonce, "workspace": str(workspace), "runRoot": str(run), "binding": binding,
            "sdkStage": str(temporary / ("sdk10-input-10-" + args.rid)), "deadlineMono": BOOTSTRAP_MONO + 240 if binding["purpose"] == "verifier-sdk0" else now + 1140,
-           "purpose": binding["purpose"], "storageMaxBytes": 268435456 if binding["purpose"] == "verifier-sdk0" else 4294967296,
+           "programDataObservation": programdata, "purpose": binding["purpose"], "storageMaxBytes": 268435456 if binding["purpose"] == "verifier-sdk0" else 4294967296,
            "unit": "matching10-ci-" + nonce + ".service", "uid": os.getuid() if hasattr(os, "getuid") else None,
            "gid": os.getgid() if hasattr(os, "getgid") else None, "environment": env, "SDKProcessesStarted": 0}
     host_proof = run / "host-observation.json"
     save(host_proof, {"status": "SUPPORTED_HOSTED_NATIVE_OS_OBSERVED", "source": binding["source"],
                       "controllerSHA256": binding["controllerSHA256"], "payloadSHA256": binding["payloadSHA256"],
-                      **binding["hostObservation"]})
+                      **binding["hostObservation"], "programDataObservation": programdata})
     ctx["environment"]["MATCHING10_HOST_OBSERVATION"] = str(host_proof)
     ctx["environment"]["MATCHING10_DIAGNOSTIC_ROOT"] = str(run)
     path = run / "context.json"; save(path, ctx)

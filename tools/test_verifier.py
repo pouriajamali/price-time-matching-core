@@ -1,14 +1,38 @@
 """Original eight pinned-signature regressions with bounded failure-aware receipts."""
 import argparse,hashlib,json,locale,os,shutil,subprocess,sys,tempfile,unittest
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 ROOT=Path(__file__).resolve().parents[1]
 PIN='SHA256:AgU5bZlJSjUu0KsWMmVEEr+BfXpcMVNroTA33bHcQdU'
 CASE_IDS = ('test_actual_known_key_signature_and_archive', 'test_crlf_single_line_and_untrusted_comment_are_safe', 'test_forged_single_line_comment_does_not_authorize_attacker', 'test_noncanonical_blob_and_controls_are_rejected', 'test_second_bare_key_and_extra_blank_line_are_rejected', 'test_tampered_selected_archive_fails_after_valid_signature', 'test_valid_pinned_first_key_cannot_inject_attacker_principal', 'test_wrong_case_fingerprint_and_wrong_signature_fail')
 
 
+WINDOWS_SSH_IDENTITY = {"bytes": 861184, "sha256": "c9dc170cd161db87e75eb6cf282f1325005b9e35628b9a36cb19883a8be1a34f"}
+
+
+def programdata_observation(environment, windows):
+    if not windows:return {"applicable": False}
+    value=environment.get('ProgramData')
+    if type(value) is not str:raise ValueError('PROGRAMDATA_MISSING')
+    if not value:raise ValueError('PROGRAMDATA_EMPTY')
+    if any(char in value for char in ('\x00','\r','\n')):raise ValueError('PROGRAMDATA_CONTROLS')
+    if not PureWindowsPath(value).is_absolute():raise ValueError('PROGRAMDATA_NOT_ABSOLUTE')
+    try:exists=Path(value).is_dir()
+    except OSError:raise ValueError('PROGRAMDATA_DIRECTORY_METADATA_UNKNOWN') from None
+    if not exists:raise ValueError('PROGRAMDATA_NOT_DIRECTORY')
+    return {'applicable':True,'present':True,'nonempty':True,'absolute':True,'existingDirectory':True,
+            'valueSHA256':hashlib.sha256(value.encode('utf-8',errors='surrogatepass')).hexdigest()}
+
+
+def enforce_ssh_identity(identity,windows):
+    if windows and (identity.get('bytes')!=WINDOWS_SSH_IDENTITY['bytes'] or identity.get('sha256')!=WINDOWS_SSH_IDENTITY['sha256']):
+        raise ValueError('SSH_IDENTITY_DRIFT')
+
+
 def failure_data(error):
     names={'FileNotFoundError','FileExistsError','IsADirectoryError','PermissionError','CalledProcessError','TimeoutExpired','OSError','ValueError','ImportError','ModuleNotFoundError','UnicodeDecodeError'}
-    return {'category':type(error).__name__ if type(error).__name__ in names else 'UNKNOWN_EXCEPTION',
+    input_codes={'PROGRAMDATA_MISSING','PROGRAMDATA_EMPTY','PROGRAMDATA_CONTROLS','PROGRAMDATA_NOT_ABSOLUTE','PROGRAMDATA_DIRECTORY_METADATA_UNKNOWN','PROGRAMDATA_NOT_DIRECTORY','SSH_IDENTITY_DRIFT'}
+    code=error.args[0] if type(error) is ValueError and error.args and type(error.args[0]) is str and error.args[0] in input_codes else None
+    return {'inputCode':code,'category':type(error).__name__ if type(error).__name__ in names else 'UNKNOWN_EXCEPTION',
             'exitCode':getattr(error,'returncode',None) if type(getattr(error,'returncode',None)) is int else None,
             'errno':getattr(error,'errno',None) if type(getattr(error,'errno',None)) is int else None,
             'winerror':getattr(error,'winerror',None) if type(getattr(error,'winerror',None)) is int else None}
@@ -131,11 +155,14 @@ def main():
         state['phase']='OUTPUT_SETUP';emit_lifecycle(root,state);a.out.mkdir(parents=True,exist_ok=False)
         state['phase']='VERIFIER_IMPORT';emit_lifecycle(root,state)
         import verify_downloads
+        state['phase']='PROGRAMDATA_INPUT';emit_lifecycle(root,state)
+        state['programData']=programdata_observation(os.environ,os.name=='nt');emit_lifecycle(root,state)
         state['phase']='TOOL_IDENTITY';emit_lifecycle(root,state)
         ssh=shutil.which('ssh-keygen')
         if not ssh:raise FileNotFoundError('EXISTING_SSH_EXECUTABLE_NOT_RESOLVED')
         ssh=str(Path(ssh).resolve(strict=True))
         state['tools']={'ssh':tool_identity(ssh,'EXISTING_RESOLVED_SSH'),'python':tool_identity(sys.executable,'CURRENT_PYTHON')}
+        enforce_ssh_identity(state['tools']['ssh'],os.name=='nt')
         state['phase']='PRIVATE_KEY_SETUP';emit_lifecycle(root,state)
         key_directory=Path(tempfile.mkdtemp(prefix='verifier-private-',dir=root))
         if os.name=='posix':os.chmod(key_directory,0o700)

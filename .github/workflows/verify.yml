@@ -66,7 +66,7 @@ jobs:
           python-version: '3.12'
       - name: Existing native verification under actual hosted own caps
         # No setup-dotnet action or SDK command may run before the actual cap/input gate.
-        run: python .github/ci/hosted_caps.py --rid ${{ matrix.rid }} --expected-controller-sha256 b6694afa7e7bbcc757b4390f146ae7289df0dd32a1ad2553df886a788b9f205b --expected-payload-sha256 d251d20f6204e4b8b79fe0d9857f831d8b5117db69d8472d72be1f06ba218d78 --expected-verifier-sha256 7f95656ca1a20ba4c8c1a81774f833a8a0c0628e4969daa505dc71bf4b16cf70 --purpose ${{ inputs.verifier_preflight == true && 'verifier-sdk0' || 'full' }}
+        run: python .github/ci/hosted_caps.py --rid ${{ matrix.rid }} --expected-controller-sha256 c6ce2d1b42db025be50a4c106419344dc3c8a86044308a956cebebd5387a4bfe --expected-payload-sha256 d251d20f6204e4b8b79fe0d9857f831d8b5117db69d8472d72be1f06ba218d78 --expected-verifier-sha256 6e33dfc57b8724636120d42bbb84c6927cf1090e8725bebd74ef5fabdfb524a8 --purpose ${{ inputs.verifier_preflight == true && 'verifier-sdk0' || 'full' }}
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: inputs.verifier_preflight != true && (startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch')
         with:

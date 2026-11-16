@@ -1,6 +1,6 @@
 """New mocked verifier/preflight deltas only; never launch SSH, SDK, HTTP or a full controller."""
 import ast,builtins,hashlib,json,os,re,shutil,subprocess,sys,tempfile,time,unittest
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 from types import SimpleNamespace
 from unittest.mock import patch
 import yaml
@@ -18,12 +18,12 @@ def count(data):
 class Deltas(unittest.TestCase):
  def setUp(self):
   parent=Path(os.environ['MATCHING10_SOURCE_FIXTURE_TEMP']).resolve();self.t=tempfile.TemporaryDirectory(prefix='verifier-delta-',dir=parent);self.addCleanup(self.t.cleanup);self.run=Path(self.t.name).resolve();self.assertTrue(self.run.is_relative_to(parent))
-  self.c={'Path':Path,'json':json,'hashlib':hashlib,'os':os,'re':re,'time':time,'sys':SimpleNamespace(executable='FAKE_PYTHON',flags=SimpleNamespace(utf8_mode=True))}
+  self.c={'Path':Path,'PureWindowsPath':PureWindowsPath,'json':json,'hashlib':hashlib,'os':os,'re':re,'time':time,'sys':SimpleNamespace(executable='FAKE_PYTHON',flags=SimpleNamespace(utf8_mode=True))}
   compile_nodes(C,('Failure','need','unique','load','save','remaining','select_purpose','observe_locked_restore_log','replace_small_diagnostic','capture_payload_diagnostic','run_verifier_preflight','command','worker','export_evidence'),self.c)
-  cases=tuple(CONTRACT['caseIDs']);self.v={'Path':Path,'json':json,'hashlib':hashlib,'os':os,'re':re,'argparse':__import__('argparse'),'sys':SimpleNamespace(executable='FAKE_PYTHON',flags=SimpleNamespace(utf8_mode=True)),'shutil':SimpleNamespace(which=lambda x:str(self.run/'fake-ssh')),'tempfile':tempfile,'subprocess':SimpleNamespace(TimeoutExpired=subprocess.TimeoutExpired,CalledProcessError=subprocess.CalledProcessError),'unittest':unittest,'CASE_IDS':cases,'PIN':'SHA256:AgU5bZlJSjUu0KsWMmVEEr+BfXpcMVNroTA33bHcQdU','ROOT':self.run/'fake-repo','__builtins__':dict(builtins.__dict__)}
-  compile_nodes(V,('failure_data','emit_lifecycle','tool_identity','observed_run','run_suite','main'),self.v)
+  cases=tuple(CONTRACT['caseIDs']);self.v={'Path':Path,'PureWindowsPath':PureWindowsPath,'json':json,'hashlib':hashlib,'os':os,'re':re,'argparse':__import__('argparse'),'sys':SimpleNamespace(executable='FAKE_PYTHON',flags=SimpleNamespace(utf8_mode=True)),'shutil':SimpleNamespace(which=lambda x:str(self.run/'fake-ssh')),'tempfile':tempfile,'subprocess':SimpleNamespace(TimeoutExpired=subprocess.TimeoutExpired,CalledProcessError=subprocess.CalledProcessError),'unittest':unittest,'CASE_IDS':cases,'WINDOWS_SSH_IDENTITY':{'bytes':861184,'sha256':'c9dc170cd161db87e75eb6cf282f1325005b9e35628b9a36cb19883a8be1a34f'},'PIN':'SHA256:AgU5bZlJSjUu0KsWMmVEEr+BfXpcMVNroTA33bHcQdU','ROOT':self.run/'fake-repo','__builtins__':dict(builtins.__dict__)}
+  compile_nodes(V,('programdata_observation','enforce_ssh_identity','failure_data','emit_lifecycle','tool_identity','observed_run','run_suite','main'),self.v)
   self.v['ROOT'].mkdir();(self.v['ROOT']/'SIGNING-PUBLIC-KEY.pub').write_bytes(count(b'FAKE_PUBLIC_ONLY'));(self.run/'fake-ssh').write_bytes(count(b'FAKE_EXECUTABLE_NOT_RUN'))
-  self.v['tool_identity']=lambda p,k:{'kind':k,'bytes':1,'sha256':'0'*64}
+  self.v['tool_identity']=lambda p,k:({'kind':k,**self.v['WINDOWS_SSH_IDENTITY']} if k=='EXISTING_RESOLVED_SSH' else {'kind':k,'bytes':1,'sha256':'0'*64})
   self.v['__builtins__']['__import__']=lambda name,*a,**k:SimpleNamespace() if name=='verify_downloads' else builtins.__import__(name,*a,**k)
   def fake_run(argv,**kwargs):
    if '-q' in argv:Path(argv[-1]).with_suffix('.pub').write_bytes(count(b'FAKE_GENERATED_PUBLIC'))
@@ -31,7 +31,7 @@ class Deltas(unittest.TestCase):
   self.v['subprocess'].run=fake_run;self.out=self.run/'results'
   self.v['run_suite']=lambda *a:{'status':'PASS','run':8,'failures':0,'errors':0,'subprocessScenarios':27,'modes':['normal','python -O','PYTHONOPTIMIZE=1']}
  def main(self):
-  with patch.dict(os.environ,{'MATCHING10_DIAGNOSTIC_ROOT':str(self.run)}),patch.object(sys,'argv',['fixture','--out',str(self.out)]):return self.v['main']()
+  with patch.dict(os.environ,{'MATCHING10_DIAGNOSTIC_ROOT':str(self.run),'ProgramData':str(self.run)}),patch.object(sys,'argv',['fixture','--out',str(self.out)]):return self.v['main']()
  def lifecycle(self):return json.loads((self.run/'verifier-lifecycle.json').read_bytes())
  def test01_typed_failure_redacts_text(self):
   error=FileNotFoundError(2,'ENV_SECRET /private?x');data=self.v['failure_data'](error);self.assertEqual(data['category'],'FileNotFoundError');self.assertEqual(data['errno'],2);self.assertNotIn('ENV_SECRET',json.dumps(data))
