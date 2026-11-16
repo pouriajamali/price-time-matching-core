@@ -10,6 +10,10 @@ on:
         description: Verify aggregation and attestations without creating a release
         type: boolean
         default: false
+      verifier_preflight:
+        description: Run only the Windows verifier prerequisite under SDK0 caps
+        type: boolean
+        default: false
 permissions:
   contents: read
 env:
@@ -49,13 +53,9 @@ jobs:
       max-parallel: 1
       fail-fast: false
       matrix:
-        include:
-          - os: windows-2025
-            rid: win-x64
-          - os: ubuntu-24.04
-            rid: linux-x64
+        include: ${{ fromJSON(inputs.verifier_preflight == true && '[{"os":"windows-2025","rid":"win-x64"}]' || '[{"os":"windows-2025","rid":"win-x64"},{"os":"ubuntu-24.04","rid":"linux-x64"}]') }}
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 20
+    timeout-minutes: ${{ inputs.verifier_preflight == true && 5 || 20 }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -66,9 +66,9 @@ jobs:
           python-version: '3.12'
       - name: Existing native verification under actual hosted own caps
         # No setup-dotnet action or SDK command may run before the actual cap/input gate.
-        run: python .github/ci/hosted_caps.py --rid ${{ matrix.rid }} --expected-controller-sha256 c216fa5433d17f0506aa6cbfe7be6a76ae4cbcc05f025aeca8f7ac6388d36377 --expected-payload-sha256 202fe05e984248eabeccfde4d5954e8de33f6d9fc2b7b4fe037cf4122e191f79
+        run: python .github/ci/hosted_caps.py --rid ${{ matrix.rid }} --expected-controller-sha256 b6694afa7e7bbcc757b4390f146ae7289df0dd32a1ad2553df886a788b9f205b --expected-payload-sha256 d251d20f6204e4b8b79fe0d9857f831d8b5117db69d8472d72be1f06ba218d78 --expected-verifier-sha256 7f95656ca1a20ba4c8c1a81774f833a8a0c0628e4969daa505dc71bf4b16cf70 --purpose ${{ inputs.verifier_preflight == true && 'verifier-sdk0' || 'full' }}
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
+        if: inputs.verifier_preflight != true && (startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch')
         with:
           retention-days: ${{ (startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch') && 7 || 3 }}
           name: bundle-${{ matrix.rid }}
@@ -93,7 +93,7 @@ jobs:
             artifacts/native-demo/*/receipt.json
           if-no-files-found: error
   aggregate:
-    if: startsWith(github.ref, 'refs/tags/v') || inputs.verify_release == true
+    if: inputs.verifier_preflight != true && (startsWith(github.ref, 'refs/tags/v') || inputs.verify_release == true)
     needs: verify
     runs-on: ubuntu-24.04
     timeout-minutes: 10

@@ -15,9 +15,22 @@ if ($IsWindows) {
 if (-not $env:MATCHING10_PACKAGE_ADMISSION) { throw 'Package admission absent' }
 $admission = Get-Content -LiteralPath $env:MATCHING10_PACKAGE_ADMISSION -Raw | ConvertFrom-Json
 if ($admission.status -ne 'EXACT_PACKAGE_INPUTS_ADMITTED' -or $admission.source -ne $env:GITHUB_SHA) { throw 'Package admission/source mismatch' }
+function Save-Marker([string]$phase, [string]$status, $code) {
+  try {
+    $value = @{ phase=$phase; status=$status; exitCode=$code } | ConvertTo-Json -Compress
+    $target = Join-Path $env:MATCHING10_DIAGNOSTIC_ROOT 'marker-diagnostic.json'
+    [IO.File]::WriteAllText(($target+'.new'), $value, [Text.UTF8Encoding]::new($false))
+    Move-Item -LiteralPath ($target+'.new') -Destination $target -Force
+  } catch { }
+}
 function Mark-Phase([string]$name) {
-  python .github/ci/hosted_caps.py --mark-stage $name --context $env:MATCHING10_CONTEXT --context-sha256 $env:MATCHING10_CONTEXT_SHA256
-  if ($LASTEXITCODE -ne 0) { throw 'Own stage marker failed' }
+  Save-Marker $name ATTEMPT $null
+  try {
+    python .github/ci/hosted_caps.py --mark-stage $name --context $env:MATCHING10_CONTEXT --context-sha256 $env:MATCHING10_CONTEXT_SHA256
+    $markerExit = $LASTEXITCODE
+  } catch { Save-Marker $name EXCEPTION $null; throw }
+  if ($markerExit -ne 0) { Save-Marker $name REJECTED $markerExit; throw 'Own stage marker failed' }
+  Save-Marker $name ACCEPTED $markerExit
 }
 # Original stage: Locked source tests
 # The original locked restore is executed once by the input gate, with offline-only sources and unchanged locks.

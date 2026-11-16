@@ -2,6 +2,8 @@
 SDK-free parent holds actual nonroot/Job child until source/event/start/caps bind.
 Inputs are admitted inside that boundary before any build/package payload.
 """
+import time
+BOOTSTRAP_MONO = time.monotonic()
 import argparse
 import base64
 import ctypes
@@ -18,7 +20,6 @@ import signal
 import stat
 import subprocess
 import sys
-import time
 import urllib.request
 from urllib.parse import urlsplit
 import xml.etree.ElementTree as ET
@@ -40,6 +41,7 @@ RESTORE_REPOSITORY_CERTIFICATES = (
     "5A2901D6ADA3D18260B9C6DFE2133C95D74B9EEF6AE0E5DC334C8454D1477DF4",
     "1F4B311D9ACC115C8DC8018B5A49E00FCE6DA8E2855F9F014CA6F34570BC482D",
 )
+VERIFIER_INPUT_SHA256 = {'tools/verify_downloads.py': '53f5df7d21c1147f7eb4f8f5c4e4292d206ae09eba91939d7baeddc67aec66a4', 'SIGNING-PUBLIC-KEY.pub': 'a59fbecc53a0b3109212b70a3a51247dbd3529512d189ac2462a27a057dad671', 'tests/provenance-fixture/fixture.zip': '053a06c8cad77646f8a12d98d2e8a0deff07814f568e73b66576d7e8fdc2c83f', 'tests/provenance-fixture/SHA256SUMS.txt': '5a48d18e98ca020b021d44e3151e9978fe2d27d395070d81c5397184513be7dc', 'tests/provenance-fixture/SHA256SUMS.txt.sig': 'b7cd1ad19387f93622205b57f8bab28ea6726bd9af3733866ce1513a0a12057b'}
 KEEP_ORIGINAL_HANDLES = []
 
 
@@ -144,7 +146,21 @@ def windows_host_observation():
             "processMachine": process_machine.value, "nativeMachine": native_machine.value}
 
 
-def source_event(expected_controller, expected_payload, rid):
+def select_purpose(event, inputs, rid, requested):
+    need(type(inputs) is dict, "PURPOSE_INPUTS")
+    def flag(name):
+        value = inputs.get(name, False)
+        need(type(value) is bool or value in ("true", "false"), "PURPOSE_INPUT_VALUE")
+        return value is True or value == "true"
+    preflight = flag("verifier_preflight") if event == "workflow_dispatch" else False
+    purpose = "verifier-sdk0" if preflight else "full"
+    need(requested == purpose, "PURPOSE_EVENT_BINDING")
+    if preflight:
+        need(rid == "win-x64" and not flag("verify_release"), "PREFLIGHT_RELEASE_OR_RID_CONFLICT")
+    return purpose
+
+
+def source_event(expected_controller, expected_payload, rid, expected_verifier, requested_purpose):
     need(os.environ.get("GITHUB_ACTIONS") == "true" and os.environ.get("RUNNER_ENVIRONMENT") == "github-hosted", "HOSTED_ONLY")
     expected_os = "Windows" if rid == "win-x64" else "Linux"
     need(platform.system() == expected_os and os.environ.get("RUNNER_OS") == expected_os
@@ -164,12 +180,16 @@ def source_event(expected_controller, expected_payload, rid):
         host_observation = {"imageOS": os.environ.get("ImageOS"), "imageVersion": os.environ.get("ImageVersion"),
                             "runnerOS": os.environ.get("RUNNER_OS"), "runnerArch": os.environ.get("RUNNER_ARCH"),
                             "system": platform.system(), "machine": platform.machine()}
+    need(sha(workspace / "tools/test_verifier.py") == expected_verifier, "VERIFIER_SOURCE_IDENTITY")
+    for name, digest in VERIFIER_INPUT_SHA256.items():
+        need(sha(workspace / name) == digest, "VERIFIER_FIXED_INPUT_IDENTITY")
     source = os.environ.get("GITHUB_SHA", "")
     need(re.fullmatch(r"[0-9a-f]{40}", source) and head(workspace) == source, "CHECKOUT_HEAD_IDENTITY")
     event = os.environ.get("GITHUB_EVENT_NAME")
     ref = os.environ.get("GITHUB_REF", "")
     body = load(os.environ["GITHUB_EVENT_PATH"], 16 * 1024 * 1024)
     need(body.get("repository", {}).get("full_name", "").lower() == REPOSITORY, "EVENT_REPOSITORY")
+    purpose = select_purpose(event, body.get("inputs") or {}, rid, requested_purpose)
     if event == "push":
         need(ref == "refs/heads/main" or ref.startswith("refs/tags/"), "EXISTING_PUSH_EVENT")
         need(body.get("ref") == ref and re.fullmatch(r"[0-9a-f]{40}", body.get("after", "")), "PUSH_REF_BINDING")
@@ -189,7 +209,7 @@ def source_event(expected_controller, expected_payload, rid):
     need(props.findtext(".//TargetFramework") == "net10.0" and props.findtext(".//RuntimeFrameworkVersion") == "10.0.15"
          and set(props.findtext(".//RuntimeIdentifiers").split(";")) == {"win-x64", "linux-x64"}, "SOURCE_FRAMEWORK_RID_GRAPH")
     return workspace, payload, {"event": event, "ref": ref, "source": source, "eventSHA256": sha(os.environ["GITHUB_EVENT_PATH"]),
-                                "controllerSHA256": expected_controller, "payloadSHA256": expected_payload, "hostObservation": host_observation}
+                                "controllerSHA256": expected_controller, "payloadSHA256": expected_payload, "hostObservation": host_observation, "purpose": purpose, "verifierSHA256": expected_verifier}
 
 
 def linux_start(pid):
@@ -241,7 +261,7 @@ def budget(ctx, force=False):
                 total += size
                 if name.endswith(".log"):
                     logs += size
-                need(total <= 4294967296, "OWN_DISK_BUDGET")
+                need(total <= ctx.get("storageMaxBytes", 4294967296), "OWN_DISK_BUDGET")
                 need(logs <= 8388608, "OWN_LOG_BUDGET")
 
 
@@ -259,30 +279,39 @@ def command(ctx, argv, name, cap, sdk=False, expected=0):
     if sdk:
         ctx["SDKLaunchAttempts"] += 1
     proc = None
-    with logfile.open("xb") as log:
-        try:
-            proc = subprocess.Popen([str(x) for x in argv], cwd=ctx["workspace"], env=ctx["environment"],
-                                    stdout=log, stderr=subprocess.STDOUT)
-            if sdk:
-                ctx["SDKProcessesStarted"] += 1
-            while proc.poll() is None:
-                budget(ctx)
-                time.sleep(0.1)
-            budget(ctx, True)
-            need(proc.returncode == expected, "COMMAND_FAILED", name + " exit=" + str(proc.returncode))
-        finally:
-            if proc is not None and proc.poll() is None:
-                proc.terminate()
-                try:
-                    proc.wait(timeout=3)
-                except subprocess.TimeoutExpired:
-                    proc.kill(); proc.wait(timeout=3)
-            if name == "nuget-signatures":
-                ctx["signatureVerifyExitCode"] = proc.returncode if proc is not None else None
-            if name == "locked-offline-restore":
-                ctx["lockedRestoreExitCode"] = proc.returncode if proc is not None else None
-    need(logfile.stat().st_size <= 8388608, "OWN_LOG_BUDGET")
-    return logfile.read_text(encoding="utf-8", errors="replace")
+    try:
+        with logfile.open("xb") as log:
+            try:
+                proc = subprocess.Popen([str(x) for x in argv], cwd=ctx["workspace"], env=ctx["environment"],
+                                        stdout=log, stderr=subprocess.STDOUT)
+                if sdk:
+                    ctx["SDKProcessesStarted"] += 1
+                while proc.poll() is None:
+                    budget(ctx)
+                    time.sleep(0.1)
+                budget(ctx, True)
+                need(proc.returncode == expected, "COMMAND_FAILED", name + " exit=" + str(proc.returncode))
+            finally:
+                if proc is not None and proc.poll() is None:
+                    proc.terminate()
+                    try:
+                        proc.wait(timeout=3)
+                    except subprocess.TimeoutExpired:
+                        proc.kill(); proc.wait(timeout=3)
+                if name == "nuget-signatures":
+                    ctx["signatureVerifyExitCode"] = proc.returncode if proc is not None else None
+                if name in ("original-native-payload", "verifier-sdk0"):
+                    ctx["innerPayloadExitCode"] = proc.returncode if proc is not None else None
+                if name == "locked-offline-restore":
+                    ctx["lockedRestoreExitCode"] = proc.returncode if proc is not None else None
+        need(logfile.stat().st_size <= 8388608, "OWN_LOG_BUDGET")
+        return logfile.read_text(encoding="utf-8", errors="replace")
+    finally:
+        if name in ("original-native-payload", "verifier-sdk0"):
+            try:
+                capture_payload_diagnostic(ctx, name, logfile)
+            except Exception:
+                pass
 
 
 def release_child(ctx, identity):
@@ -404,7 +433,7 @@ def windows_parent(ctx, argv):
             terminal = True
         if forced and error is None:
             error = {"cause": "FORCED_CLEANUP", "detail": "Never a passing terminal path"}
-        result = {"status": "PASS" if error is None and terminal and not forced and active_before == 0 else "FAIL_INCOMPLETE",
+        result = {"purpose": ctx.get("purpose", "full"), "scope": "OWNED_TERMINAL_ONLY", "status": "PASS" if error is None and terminal and not forced and active_before == 0 else "FAIL_INCOMPLETE",
                   "error": error, "forcedCleanup": forced, "activeBeforeAnyTermination": active_before,
                   "activeImmediatelyBeforeCleanup": cleanup_before, "allOwnedTerminal": terminal, "exitCode": exit_code, "originalPID": child.pid,
                   "originalFILETIME": birth(child.hProcess) if child.hProcess else None}
@@ -1140,7 +1169,7 @@ def child_context(path, expected):
 def consumer_denials(ctx):
     base = [sys.executable, str(Path(__file__).resolve()), "--rid", ctx["rid"], "--preflight-only",
             "--expected-controller-sha256", ctx["binding"]["controllerSHA256"],
-            "--expected-payload-sha256", ctx["binding"]["payloadSHA256"]]
+            "--expected-payload-sha256", ctx["binding"]["payloadSHA256"], "--expected-verifier-sha256", ctx["binding"]["verifierSHA256"], "--purpose", ctx["purpose"]]
     cases = (("controller", "CONTROLLER_SOURCE_IDENTITY"), ("payload", "PAYLOAD_SOURCE_IDENTITY"), ("rid", "NATIVE_ROW_OS_ARCH"))
     results = []
     for name, cause in cases:
@@ -1182,6 +1211,60 @@ def shared_sdk(ctx):
     return sdk, receipt
 
 
+def replace_small_diagnostic(root, name, value):
+    need(name in ("payload-stage-diagnostic.json", "verifier-prerequisite.json"), "DIAGNOSTIC_NAME")
+    need(len(json.dumps(value).encode()) <= 8192, "DIAGNOSTIC_BYTES")
+    target = Path(root) / name; temporary = target.with_suffix(".new")
+    save(temporary, value); os.replace(temporary, target)
+
+
+def capture_payload_diagnostic(ctx, role, logfile):
+    phases = {"build", "unit", "model", "modelcheck", "package", "verifier", "packagecheck", "native-demo", "original-native-payload", "verifier-sdk0"}
+    current = marker = lifecycle = None
+    for name in ("stage.json", "marker-diagnostic.json", "verifier-lifecycle.json"):
+        path = Path(ctx["runRoot"]) / name
+        try:
+            value = load(path, 8192)
+            if name == "stage.json": current = value.get("name") if value.get("name") in phases else "UNKNOWN"
+            elif name == "marker-diagnostic.json":
+                marker = {"phase": value.get("phase") if value.get("phase") in phases else "UNKNOWN",
+                          "status": value.get("status") if value.get("status") in ("ATTEMPT", "ACCEPTED", "REJECTED", "EXCEPTION") else "UNKNOWN",
+                          "exitCode": value.get("exitCode") if type(value.get("exitCode")) is int else None}
+            else:
+                allowed = {"ENTRY", "OUTPUT_SETUP", "VERIFIER_IMPORT", "TOOL_IDENTITY", "PRIVATE_KEY_SETUP", "DISPOSABLE_KEYGEN", "FIXTURE_SETUP", "SUITE_ENTRY", "ATTACKER_SIGN", "FIXTURE_VERIFY", "SUITE_COMPLETED", "FINAL_RECEIPT", "FINAL_RECEIPT_WRITTEN"}
+                lifecycle = {"phase": value.get("phase") if value.get("phase") in allowed else "UNKNOWN",
+                             "testsRun": value.get("testsRun") if type(value.get("testsRun")) is int else None}
+        except Exception:
+            pass
+    observed = observe_locked_restore_log(Path(logfile))
+    report = {"scope": "PAYLOAD_STAGE_ONLY_NOT_PRODUCT_ACCEPTANCE", "purpose": ctx.get("purpose", "full"),
+              "role": role, "actualExitCode": ctx.get("innerPayloadExitCode"), "lastAcceptedStage": current,
+              "marker": marker, "verifier": lifecycle, "closedLogBytes": observed["byteCount"],
+              "closedLogSHA256": observed["byteSHA256"], "SDKProcessesStartedByController": ctx["SDKProcessesStarted"]}
+    replace_small_diagnostic(ctx["runRoot"], "payload-stage-diagnostic.json", report)
+
+
+def verifier_input_guard(ctx):
+    workspace = Path(ctx["workspace"])
+    need(sha(workspace / "tools/test_verifier.py") == ctx["binding"]["verifierSHA256"], "VERIFIER_SOURCE_IDENTITY")
+    for name, digest in VERIFIER_INPUT_SHA256.items():
+        need(sha(workspace / name) == digest, "VERIFIER_FIXED_INPUT_IDENTITY")
+
+
+def run_verifier_preflight(ctx):
+    need(ctx["purpose"] == "verifier-sdk0" and ctx["rid"] == "win-x64" and ctx["SDKProcessesStarted"] == 0, "SDK0_PURPOSE_GUARD")
+    run = Path(ctx["runRoot"])
+    command(ctx, [sys.executable, Path(ctx["workspace"]) / "tools/test_verifier.py", "--out", run / "verifier-results"],
+            "verifier-sdk0", remaining(ctx))
+    receipt = load(run / "verifier-suite-receipt.json", 8192)
+    need(receipt.get("status") == "PASS" and receipt.get("run") == 8 and receipt.get("subprocessScenarios") == 27
+         and receipt.get("modes") == ["normal", "python -O", "PYTHONOPTIMIZE=1"] and ctx["SDKProcessesStarted"] == 0,
+         "SDK0_VERIFIER_RECEIPT_REQUIRED")
+    replace_small_diagnostic(run, "verifier-prerequisite.json", {"status": "PASS_VERIFIER_PREREQUISITE_ONLY", "purpose": "verifier-sdk0",
+        "tests": 8, "attemptScenarios": 27, "SDK": 0, "materializations": 0, "productTargets": 0, "networkRequests": 0,
+        "scope": "New supported Windows verifier prerequisite only; not historical cause or SDK/product/release acceptance"})
+
+
 def worker(path, expected):
     ctx = child_context(path, expected)
     run = Path(ctx["runRoot"])
@@ -1204,20 +1287,25 @@ def worker(path, expected):
             need(linux_identity(pid, ctx["unit"], ctx["uid"], ctx["gid"])["start"] == identity["start"], "ACTUAL_START_OR_CAP_CHANGED")
         temporary = run / "tmp"; temporary.mkdir(exist_ok=False)
         ctx["environment"].update({"TMPDIR": str(temporary), "TEMP": str(temporary), "TMP": str(temporary)})
-        consumer_denials(ctx)
-        sdk, sdk_receipt = shared_sdk(ctx)
-        input_policy(ctx, sdk, sdk_receipt)
-        admission = load(run / "package-admission.json")
-        need(admission["status"] == "EXACT_PACKAGE_INPUTS_ADMITTED" and admission["source"] == ctx["binding"]["source"], "PACKAGE_ADMISSION_BEFORE_BUILD")
-        env = ctx["environment"]
-        env.update({"MATCHING10_PACKAGE_ADMISSION": str(run / "package-admission.json"), "MATCHING10_CONTEXT": str(path),
-                    "MATCHING10_CONTEXT_SHA256": expected, "PATH": str(sdk.parent) + os.pathsep + env["PATH"],
-                    "MATCHING10_RID": ctx["rid"], "TMPDIR": str(run / "tmp"), "TEMP": str(run / "tmp"), "TMP": str(run / "tmp")})
-        (run / "tmp").mkdir(exist_ok=True)
-        pwsh = shutil.which("pwsh"); need(pwsh, "HOSTED_PWSH_MISSING")
-        ctx["payloadReleased"] = True
-        command(ctx, [pwsh, "-NoLogo", "-NoProfile", "-NonInteractive", "-File", Path(ctx["workspace"]) / ".github/ci/matching10-native.ps1"],
-                "original-native-payload", min(remaining(ctx), 900))
+        ctx["environment"].update({"MATCHING10_DIAGNOSTIC_ROOT": str(run), "MATCHING10_CONTEXT": str(path), "MATCHING10_CONTEXT_SHA256": expected})
+        verifier_input_guard(ctx)
+        if ctx["purpose"] == "verifier-sdk0":
+            run_verifier_preflight(ctx)
+        else:
+            consumer_denials(ctx)
+            sdk, sdk_receipt = shared_sdk(ctx)
+            input_policy(ctx, sdk, sdk_receipt)
+            admission = load(run / "package-admission.json")
+            need(admission["status"] == "EXACT_PACKAGE_INPUTS_ADMITTED" and admission["source"] == ctx["binding"]["source"], "PACKAGE_ADMISSION_BEFORE_BUILD")
+            env = ctx["environment"]
+            env.update({"MATCHING10_PACKAGE_ADMISSION": str(run / "package-admission.json"), "MATCHING10_CONTEXT": str(path),
+                        "MATCHING10_CONTEXT_SHA256": expected, "PATH": str(sdk.parent) + os.pathsep + env["PATH"],
+                        "MATCHING10_RID": ctx["rid"], "TMPDIR": str(run / "tmp"), "TEMP": str(run / "tmp"), "TMP": str(run / "tmp")})
+            (run / "tmp").mkdir(exist_ok=True)
+            pwsh = shutil.which("pwsh"); need(pwsh, "HOSTED_PWSH_MISSING")
+            ctx["payloadReleased"] = True
+            command(ctx, [pwsh, "-NoLogo", "-NoProfile", "-NonInteractive", "-File", Path(ctx["workspace"]) / ".github/ci/matching10-native.ps1"],
+                    "original-native-payload", min(remaining(ctx), 900))
         if ctx["rid"] == "linux-x64":
             group = Path(identity["cgroup"])
             members = sorted(int(x) for x in (group / "cgroup.procs").read_text().split())
@@ -1228,6 +1316,7 @@ def worker(path, expected):
     result = {"status": "PASS" if error is None else "FAIL_INCOMPLETE", "error": error, "actualPID": pid,
               "actualStart": identity["start"] if "identity" in locals() else None,
               "SDKLaunchAttempts": ctx["SDKLaunchAttempts"], "SDKProcessesStartedByController": ctx["SDKProcessesStarted"],
+              "purpose": ctx["purpose"], "acceptanceScope": "VERIFIER_PREREQUISITE_ONLY" if ctx["purpose"] == "verifier-sdk0" else "FULL_NATIVE_ROW",
               "sdk0": ctx["SDKProcessesStarted"] == 0, "payloadReleased": ctx["payloadReleased"],
               "naturalMembersBeforeExit": members, "source": ctx["binding"]["source"]}
     save(run / "child-result.json", result)
@@ -1244,6 +1333,13 @@ def export_evidence(ctx):
             total += source.stat().st_size; need(total <= 2097152, "INCREMENTAL_PROOF_CAP")
             with (target / name).open("xb") as out:
                 out.write(source.read_bytes())
+    incremental = 0
+    for name in ("payload-stage-diagnostic.json", "marker-diagnostic.json", "verifier-lifecycle.json", "verifier-suite-receipt.json", "verifier-prerequisite.json"):
+        source = Path(ctx["runRoot"]) / name
+        if source.exists():
+            size = source.stat().st_size; incremental += size; total += size
+            need(size <= 8192 and incremental <= 32768 and total <= 2097152, "VERIFIER_DIAGNOSTIC_EXPORT_CAP")
+            with (target / name).open("xb") as out: out.write(source.read_bytes())
     source = Path(ctx["sdkStage"]) / "evidence" / ("sdk-materialization-" + ctx["rid"] + ".json")
     if source.exists():
         total += source.stat().st_size; need(total <= 2097152, "INCREMENTAL_PROOF_CAP")
@@ -1252,7 +1348,7 @@ def export_evidence(ctx):
 
 
 def parent(args):
-    workspace, payload, binding = source_event(args.expected_controller_sha256, args.expected_payload_sha256, args.rid)
+    workspace, payload, binding = source_event(args.expected_controller_sha256, args.expected_payload_sha256, args.rid, args.expected_verifier_sha256, args.purpose)
     if args.preflight_only:
         print(json.dumps({"status": "SOURCE_PREFLIGHT_ONLY", "SDKProcessesStarted": 0})); return 0
     temporary = Path(os.environ["RUNNER_TEMP"]).resolve()
@@ -1264,7 +1360,8 @@ def parent(args):
                "RUNNER_TEMP", "RUNNER_OS", "RUNNER_ARCH", "RUNNER_ENVIRONMENT", "ImageOS", "ImageVersion")
     env = {key: os.environ[key] for key in allowed if key in os.environ}
     ctx = {"rid": args.rid, "nonce": nonce, "workspace": str(workspace), "runRoot": str(run), "binding": binding,
-           "sdkStage": str(temporary / ("sdk10-input-10-" + args.rid)), "deadlineMono": now + 1140,
+           "sdkStage": str(temporary / ("sdk10-input-10-" + args.rid)), "deadlineMono": BOOTSTRAP_MONO + 240 if binding["purpose"] == "verifier-sdk0" else now + 1140,
+           "purpose": binding["purpose"], "storageMaxBytes": 268435456 if binding["purpose"] == "verifier-sdk0" else 4294967296,
            "unit": "matching10-ci-" + nonce + ".service", "uid": os.getuid() if hasattr(os, "getuid") else None,
            "gid": os.getgid() if hasattr(os, "getgid") else None, "environment": env, "SDKProcessesStarted": 0}
     host_proof = run / "host-observation.json"
@@ -1272,6 +1369,7 @@ def parent(args):
                       "controllerSHA256": binding["controllerSHA256"], "payloadSHA256": binding["payloadSHA256"],
                       **binding["hostObservation"]})
     ctx["environment"]["MATCHING10_HOST_OBSERVATION"] = str(host_proof)
+    ctx["environment"]["MATCHING10_DIAGNOSTIC_ROOT"] = str(run)
     path = run / "context.json"; save(path, ctx)
     argv = [sys.executable, str(Path(__file__).resolve()), "--child", str(path), "--context-sha256", sha(path)]
     try:
@@ -1281,7 +1379,11 @@ def parent(args):
                   "detail": str(failure)[:2048]}, "allOwnedTerminal": "UNKNOWN", "forcedCleanup": "SEE_ORIGINAL_HANDLE_UNIT_PROOF"}
         if not (run / "parent-terminal.json").exists():
             save(run / "parent-terminal.json", result)
-    export_evidence(ctx)
+    try:
+        export_evidence(ctx)
+    except Exception:
+        if result["status"] == "PASS":
+            raise
     need(result["status"] == "PASS", "OWN_ROW_FAILED_OR_INCOMPLETE", repr(result["error"]))
     need(load(run / "child-result.json")["status"] == "PASS", "CHILD_RESULT_FAILED")
     return 0
@@ -1291,6 +1393,8 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--expected-controller-sha256")
     parser.add_argument("--expected-payload-sha256")
+    parser.add_argument("--expected-verifier-sha256")
+    parser.add_argument("--purpose", choices=("full", "verifier-sdk0"), default="full")
     parser.add_argument("--rid", choices=("win-x64", "linux-x64"))
     parser.add_argument("--preflight-only", action="store_true")
     parser.add_argument("--child", type=Path)
@@ -1305,9 +1409,10 @@ def main():
             return worker(args.child, args.context_sha256)
         if args.mark_stage:
             ctx = child_context(args.context, args.context_sha256)
+            need(ctx["purpose"] == "full", "MARK_STAGE_FULL_ONLY")
             stage(ctx, args.mark_stage, 900 if args.mark_stage in ("build", "package") else 180)
             return 0
-        need(args.rid and args.expected_controller_sha256 and args.expected_payload_sha256, "FIXED_ENTRY_ARGUMENTS")
+        need(args.rid and args.expected_controller_sha256 and args.expected_payload_sha256 and args.expected_verifier_sha256, "FIXED_ENTRY_ARGUMENTS")
         return parent(args)
     except Exception as failure:
         print(json.dumps({"status": "SDK0_DENIED" if args.preflight_only else "FAIL_INCOMPLETE",
