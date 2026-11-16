@@ -35,6 +35,11 @@ LOCK_SHA = "92226e085c0512971454e5e313d3fad8586565079110b85af9a3615e7be13386"
 MS_CERT = "9A1B131BEE0605433056A4EA3815478A8E177961A968C6C0027C1093D1FEB630"
 REPO_CERT = "1F4B311D9ACC115C8DC8018B5A49E00FCE6DA8E2855F9F014CA6F34570BC482D"
 CAP = {"cpu.max": "200000 100000", "memory.max": "2147483648", "memory.swap.max": "0", "pids.max": "128"}
+RESTORE_REPOSITORY_CERTIFICATES = (
+    "0E5F38F57DC1BCC806D8494F4F90FBCEDD988B46760709CBEEC6F4219AA6157D",
+    "5A2901D6ADA3D18260B9C6DFE2133C95D74B9EEF6AE0E5DC334C8454D1477DF4",
+    "1F4B311D9ACC115C8DC8018B5A49E00FCE6DA8E2855F9F014CA6F34570BC482D",
+)
 KEEP_ORIGINAL_HANDLES = []
 
 
@@ -274,6 +279,8 @@ def command(ctx, argv, name, cap, sdk=False, expected=0):
                     proc.kill(); proc.wait(timeout=3)
             if name == "nuget-signatures":
                 ctx["signatureVerifyExitCode"] = proc.returncode if proc is not None else None
+            if name == "locked-offline-restore":
+                ctx["lockedRestoreExitCode"] = proc.returncode if proc is not None else None
     need(logfile.stat().st_size <= 8388608, "OWN_LOG_BUDGET")
     return logfile.read_text(encoding="utf-8", errors="replace")
 
@@ -884,15 +891,126 @@ def signature_diagnostic(ctx, selected, inspected, command_failure=None):
     return report
 
 
+def build_nuget_config(offline):
+    root = ET.Element("configuration")
+    sources = ET.SubElement(root, "packageSources"); ET.SubElement(sources, "clear")
+    ET.SubElement(sources, "add", {"key": "own-offline", "value": str(offline)})
+    fallback = ET.SubElement(root, "fallbackPackageFolders"); ET.SubElement(fallback, "clear")
+    audit = ET.SubElement(root, "auditSources"); ET.SubElement(audit, "clear")
+    ET.SubElement(audit, "add", {"key": "official-audit", "value": "https://api.nuget.org/v3/index.json"})
+    config = ET.SubElement(root, "config")
+    ET.SubElement(config, "add", {"key": "signatureValidationMode", "value": "require"})
+    trust = ET.SubElement(root, "trustedSigners"); ET.SubElement(trust, "clear")
+    repository = ET.SubElement(trust, "repository", {"name": "nuget.org", "serviceIndex": "https://api.nuget.org/v3/index.json"})
+    for fingerprint in RESTORE_REPOSITORY_CERTIFICATES:
+        ET.SubElement(repository, "certificate", {"fingerprint": fingerprint, "hashAlgorithm": "SHA256", "allowUntrustedRoot": "false"})
+    return ET.tostring(root, encoding="utf-8", xml_declaration=True)
+
+
+def validate_nuget_config(data, offline):
+    need(type(data) is bytes and len(data) <= 16384 and b"<!DOCTYPE" not in data.upper()
+         and b"<!ENTITY" not in data.upper(), "NUGET_CONFIG_XML_CAP_OR_DTD")
+    try:
+        root = ET.fromstring(data)
+    except ET.ParseError:
+        raise Failure("NUGET_CONFIG_XML_INVALID") from None
+    def node_matches(node, tag, attributes):
+        return node.tag == tag and node.attrib == attributes and len(node) == 0 and not (node.text or "").strip()
+    need(root.tag == "configuration" and not root.attrib and not (root.text or "").strip(), "NUGET_CONFIG_ROOT")
+    names = [node.tag for node in root]
+    need(len(names) == 5 and set(names) == {"packageSources", "fallbackPackageFolders", "auditSources", "config", "trustedSigners"}
+         and all(not node.attrib and not (node.text or "").strip() for node in root), "NUGET_CONFIG_SECTIONS")
+    sections = {node.tag: node for node in root}
+    sources = list(sections["packageSources"])
+    need(len(sources) == 2 and node_matches(sources[0], "clear", {})
+         and node_matches(sources[1], "add", {"key": "own-offline", "value": str(offline)}), "NUGET_CONFIG_CLOSED_SOURCE")
+    fallback = list(sections["fallbackPackageFolders"])
+    need(len(fallback) == 1 and node_matches(fallback[0], "clear", {}), "NUGET_CONFIG_FALLBACK")
+    audit = list(sections["auditSources"])
+    need(len(audit) == 2 and node_matches(audit[0], "clear", {})
+         and node_matches(audit[1], "add", {"key": "official-audit", "value": "https://api.nuget.org/v3/index.json"}), "NUGET_CONFIG_AUDIT_SOURCE")
+    mode = list(sections["config"])
+    need(len(mode) == 1 and node_matches(mode[0], "add", {"key": "signatureValidationMode", "value": "require"}), "NUGET_CONFIG_REQUIRE")
+    trust = list(sections["trustedSigners"])
+    need(len(trust) == 2 and node_matches(trust[0], "clear", {}) and trust[1].tag == "repository"
+         and trust[1].attrib == {"name": "nuget.org", "serviceIndex": "https://api.nuget.org/v3/index.json"}
+         and not (trust[1].text or "").strip(), "NUGET_CONFIG_TRUST_REPOSITORY")
+    certificates = list(trust[1]); fingerprints = [node.attrib.get("fingerprint") for node in certificates]
+    need(len(certificates) == 3 and set(fingerprints) == set(RESTORE_REPOSITORY_CERTIFICATES)
+         and all(node_matches(node, "certificate", {"fingerprint": node.attrib.get("fingerprint"),
+                 "hashAlgorithm": "SHA256", "allowUntrustedRoot": "false"}) for node in certificates), "NUGET_CONFIG_EXACT_TRUST_SET")
+    return {"configSHA256": hashlib.sha256(data).hexdigest(), "trustedRepositoryCertificateSHA256": list(RESTORE_REPOSITORY_CERTIFICATES),
+            "fixedTrustPolicySHA256": hashlib.sha256(json.dumps({"mode": "require", "serviceIndex": "https://api.nuget.org/v3/index.json",
+                "certificates": list(RESTORE_REPOSITORY_CERTIFICATES), "hashAlgorithm": "SHA256", "allowUntrustedRoot": False}, sort_keys=True).encode()).hexdigest()}
+
+
+def observe_locked_restore_log(log):
+    result = {"state": "UNKNOWN_MISSING", "byteCount": None, "byteSHA256": None, "errorCodes": [], "codeLimitReached": False}
+    try:
+        if log.is_symlink():
+            result["state"] = "UNKNOWN_LINK"; return result
+        if not log.is_file():
+            return result
+        before = log.stat(); result["byteCount"] = before.st_size
+        if before.st_size > 8388608:
+            result["state"] = "UNKNOWN_OVERSIZE"; return result
+        with log.open("rb") as stream:
+            data = stream.read(8388609)
+        after = log.stat()
+        if len(data) > 8388608 or len(data) != before.st_size or before.st_size != after.st_size or before.st_mtime_ns != after.st_mtime_ns:
+            result["state"] = "UNKNOWN_UNSTABLE"; return result
+        result["byteSHA256"] = hashlib.sha256(data).hexdigest()
+        for match in re.finditer(rb"(?i)\berror[ \t]+((?:NU|MSB|NETSDK)[0-9]{4})(?![A-Za-z0-9_])", data):
+            code = match[1].decode("ascii").upper()
+            if code not in result["errorCodes"]:
+                result["errorCodes"].append(code)
+            if len(result["errorCodes"]) == 32:
+                result["codeLimitReached"] = True; break
+        result["state"] = "OBSERVED_ALLOWLISTED_CODES" if result["errorCodes"] else "UNKNOWN_NO_ALLOWLISTED_ERROR_CODES"
+    except OSError:
+        result["state"] = "UNKNOWN_READ_FAILURE"
+    return result
+
+
+def capture_restore_diagnostic(ctx, config_policy, command_failure=None):
+    run = Path(ctx["runRoot"]); log = run / "locked-offline-restore.log"
+    need(run.is_absolute() and not run.is_symlink() and log.parent.resolve() == run.resolve(), "RESTORE_DIAG_OWNED_LOG")
+    observation = observe_locked_restore_log(log)
+    cause = getattr(command_failure, "cause", "UNKNOWN_EXCEPTION") if command_failure is not None else None
+    report = {"schema": "matching10/locked-restore-diagnostic/v1", "classification": "OBSERVATIONS_ONLY_NOT_HISTORICAL_CAUSE_OR_ADMISSION",
+        "configSHA256": config_policy["configSHA256"], "fixedTrustPolicySHA256": config_policy["fixedTrustPolicySHA256"],
+        "trustedRepositoryCertificateSHA256": list(RESTORE_REPOSITORY_CERTIFICATES),
+        "signatureValidationMode": "require", "allowUntrustedRoot": False, "onlineRevocationRequired": True,
+        "actualExitCode": ctx.get("lockedRestoreExitCode"), "SDKLaunchAttempts": ctx["SDKLaunchAttempts"],
+        "SDKProcessesStartedByController": ctx["SDKProcessesStarted"],
+        "primaryFailureCause": cause if cause is None or re.fullmatch(r"[A-Z0-9_]{1,80}", cause) else "UNKNOWN_EXCEPTION",
+        **observation}
+    need(len(json.dumps(report).encode("utf-8")) <= 8192, "RESTORE_DIAG_BYTES")
+    save(run / "locked-restore-diagnostic.json", report)
+    return report
+
+
+def locked_offline_restore(ctx, sdk, config, packages, offline):
+    policy = validate_nuget_config(Path(config).read_bytes(), offline)
+    try:
+        command(ctx, [sdk, "restore", "PriceTimeMatching.slnx", "--locked-mode", "--configfile", config,
+                      "--packages", packages, "--no-cache", "-m:1", "-p:RestoreFallbackFolders="], "locked-offline-restore", 180, True)
+    except Exception as failure:
+        try:
+            capture_restore_diagnostic(ctx, policy, failure)
+        except Exception:
+            pass  # Never replace the original closed-command/config failure with a diagnostic failure.
+        raise
+    capture_restore_diagnostic(ctx, policy)
+
+
 def input_policy(ctx, sdk, sdk_receipt):
     workspace = Path(ctx["workspace"]); root = Path(ctx["runRoot"])
     offline = root / "offline"; offline.mkdir(); packages = root / "packages"; packages.mkdir()
     notices = root / "notices"; notices.mkdir()
     config = root / "NuGet.Config"
-    config.write_text('<configuration><packageSources><clear/><add key="own-offline" value="' + str(offline).replace('&', '&amp;')
-                      + '"/></packageSources><fallbackPackageFolders><clear/></fallbackPackageFolders><auditSources><clear/>'
-                      + '<add key="official-audit" value="https://api.nuget.org/v3/index.json"/></auditSources>'
-                      + '<config><add key="signatureValidationMode" value="require"/></config></configuration>', encoding="utf-8")
+    config.write_bytes(build_nuget_config(offline))
+    validate_nuget_config(config.read_bytes(), offline)
     env = ctx["environment"]
     env.update({"NUGET_PACKAGES": str(packages), "NUGET_HTTP_CACHE_PATH": str(root / "http"),
                 "NUGET_PLUGINS_CACHE_PATH": str(root / "plugins"), "DOTNET_CLI_HOME": str(root / "home"),
@@ -968,8 +1086,7 @@ def input_policy(ctx, sdk, sdk_receipt):
         inspected[identity]["signaturePolicy"] = {"exitCode": 0, "repositoryCertificate": expected_repository,
                                                    "authorCertificate": MS_CERT if spec["implicit"] else "Exact raw/lock plus NuGetrepository signature policy"}
     advisory_guard(ctx, selected, total)
-    command(ctx, [sdk, "restore", "PriceTimeMatching.slnx", "--locked-mode", "--configfile", config,
-                  "--packages", packages, "--no-cache", "-m:1", "-p:RestoreFallbackFolders="], "locked-offline-restore", 180, True)
+    locked_offline_restore(ctx, sdk, config, packages, offline)
     seen = set()
     for path in packages.iterdir():
         if not path.is_dir():
@@ -1121,7 +1238,7 @@ def export_evidence(ctx):
     target = Path(ctx["workspace"]) / "artifacts/hosted-cap-proof"
     target.mkdir(parents=True, exist_ok=True)
     total = 0
-    for name in ("advisory-transport.json", "nuget-signature-diagnostic.json", "host-observation.json", "caps.json", "held-ready.json", "release.json", "package-admission.json", "selected-advisory.json", "denial-proof.json", "child-result.json", "parent-terminal.json"):
+    for name in ("locked-restore-diagnostic.json", "advisory-transport.json", "nuget-signature-diagnostic.json", "host-observation.json", "caps.json", "held-ready.json", "release.json", "package-admission.json", "selected-advisory.json", "denial-proof.json", "child-result.json", "parent-terminal.json"):
         source = Path(ctx["runRoot"]) / name
         if source.exists():
             total += source.stat().st_size; need(total <= 2097152, "INCREMENTAL_PROOF_CAP")
