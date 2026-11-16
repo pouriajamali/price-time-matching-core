@@ -1221,9 +1221,9 @@ TEST_PACKAGES = json.loads(r'''{
     "normalized": "dDoKi0PnDz31yAyETfRntsLArTlVAVzUzCIvvEDsDsucrl33Dl8pIJG06ePTJTI3tGpeyHS9Cq7Foc/s4EeKcg==",
     "implicit": false,
     "signatureFileSHA256": "eb36362b3b0f9390d9b29f618f0dd3a9adf2bf72309a7b25e8b87439dfc8b781",
-    "repositoryCertificate": null,
+    "repositoryCertificate": "0E5F38F57DC1BCC806D8494F4F90FBCEDD988B46760709CBEEC6F4219AA6157D",
     "repositoryProvenance": {
-      "state": "UNKNOWN",
+      "state": "EXACT_RETAINED_CMS_DATA_AND_COORDINATOR_OFFICIAL_CERT_REFERENCE",
       "retainedCmsRepositoryData": [
         {
           "role": "counter",
@@ -1236,7 +1236,7 @@ TEST_PACKAGES = json.loads(r'''{
       ],
       "officialCertificateReference": "https://learn.microsoft.com/en-us/nuget/api/repository-signatures-resource",
       "timestampPolicyReference": "https://learn.microsoft.com/en-us/nuget/reference/signed-packages-reference",
-      "referenceScope": "Coordinator-supplied official certificate provenance; not fetched or cryptographically revalidated this stage",
+      "referenceScope": "Manager reported root opening the official repository-signatures-resource and matching sample lines104-115: exact0E5F fingerprint/subject/2018-04-10..2021-04-14T12:00:00Z. No consumer network or actual signature/timestamp/chain verification in this source amendment.",
       "signatureAndTimestampVerified": false
     }
   },

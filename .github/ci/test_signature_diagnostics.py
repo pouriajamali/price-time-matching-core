@@ -120,13 +120,36 @@ class SignatureDiagnosticFixtures(unittest.TestCase):
                     ENV["test_repository_pin"](*candidate)
                 self.assertEqual(raised.exception.cause, cause)
 
-    def test_insufficient_provenance_holds_only_that_package(self):
+    def test_registry2018_exact_identity_pin(self):
         spec = TEST_PACKAGES["microsoft.win32.registry"]
-        self.assertIsNone(spec["repositoryCertificate"])
-        with self.assertRaises(ENV["Failure"]) as raised:
-            ENV["test_repository_pin"](spec["id"], spec["version"], spec["rawSHA512"], spec["normalized"], spec["signatureFileSHA256"])
-        self.assertEqual(raised.exception.cause, "TEST_SIGNER_PROVENANCE_UNKNOWN")
-        self.assertEqual(ENV["test_repository_pin"](SPEC["id"], SPEC["version"], SPEC["rawSHA512"], SPEC["normalized"], SPEC["signatureFileSHA256"]), EXPECTED_BCL_REPOSITORY)
+        pin = ENV["test_repository_pin"](spec["id"], spec["version"], spec["rawSHA512"], spec["normalized"], spec["signatureFileSHA256"])
+        self.assertEqual(pin, "0E5F38F57DC1BCC806D8494F4F90FBCEDD988B46760709CBEEC6F4219AA6157D")
+        output = fixture().replace("microsoft.bcl.asyncinterfaces.6.0.0", "microsoft.win32.registry.5.0.0").replace(NORMALIZED, spec["normalized"]).replace(EXPECTED_BCL_REPOSITORY, pin)
+        row = ENV["signature_observations"](output, [spec], 0)["packages"][0]
+        self.assertEqual(row["repositoryObservation"], "OBSERVED_REPOSITORY_PIN_MATCH")
+        self.assertEqual(row["expectedRepositoryCertificate"], pin)
+
+    def test_registry_wrong_certificate_has_no_global_fallback(self):
+        spec = TEST_PACKAGES["microsoft.win32.registry"]
+        for wrong in (REPO_CERT, OLD_REPOSITORY_DATA):
+            with self.subTest(certificate=wrong):
+                with self.assertRaises(ENV["Failure"]) as raised:
+                    exec(PIN_GUARD, dict(ENV, signatures={"repository": wrong}, expected_repository=spec["repositoryCertificate"], identity=spec["id"]))
+                self.assertEqual(raised.exception.cause, "NUGET_REPOSITORY_CERT_MISMATCH")
+
+    def test_registry_changed_identity_is_denied(self):
+        spec = TEST_PACKAGES["microsoft.win32.registry"]
+        values = [spec["id"], spec["version"], spec["rawSHA512"], spec["normalized"], spec["signatureFileSHA256"]]
+        for index, changed, cause in ((0, "unknown.package", "TEST_SIGNER_PACKAGE_IDENTITY"),
+                                       (1, "5.0.1", "TEST_SIGNER_PACKAGE_IDENTITY"),
+                                       (2, "0" * 128, "TEST_SIGNER_RAW_IDENTITY"),
+                                       (3, base64.b64encode(bytes(64)).decode(), "TEST_SIGNER_NORMALIZED_IDENTITY"),
+                                       (4, "0" * 64, "TEST_SIGNER_SIGNATURE_FILE_IDENTITY")):
+            with self.subTest(field=index):
+                candidate = list(values); candidate[index] = changed
+                with self.assertRaises(ENV["Failure"]) as raised:
+                    ENV["test_repository_pin"](*candidate)
+                self.assertEqual(raised.exception.cause, cause)
 
     def test_failed_sdk_verify_still_stops_before_pin_admission(self):
         code = isolated_guard("command", {"COMMAND_FAILED"}, ())
