@@ -131,11 +131,11 @@ jobs:
           name: verified-release-candidate
           path: artifacts/release/*
           if-no-files-found: error
-      - name: Publish tested preview without rebuilding
+      - name: Create tested draft preview without rebuilding
         if: startsWith(github.ref, 'refs/tags/v')
         env:
           GH_TOKEN: ${{ github.token }}
           ACTUAL_TAG: ${{ github.ref_name }}
         run: |
           test "$ACTUAL_TAG" = "$RELEASE_TAG"
-          gh release create "$RELEASE_TAG" artifacts/release/* --verify-tag --prerelease --title "$RELEASE_TAG - Price-Time Matching Core" --notes-file docs/RELEASE.md
+          gh release create "$RELEASE_TAG" artifacts/release/* --verify-tag --prerelease --draft --title "$RELEASE_TAG - Price-Time Matching Core" --notes-file docs/RELEASE.md
