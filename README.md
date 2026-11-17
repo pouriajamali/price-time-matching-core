@@ -1,3 +1,5 @@
+> **Latest release: [v0.1.0-preview.2](https://github.com/pouriajamali/price-time-matching-core/releases/tag/v0.1.0-preview.2).** Use that release for downloads and its [exact tag source](https://github.com/pouriajamali/price-time-matching-core/tree/v0.1.0-preview.2) for the capacity-model implementation and current instructions. This default branch retains the older implementation/history documented below; it does not contain the preview.2 implementation. Verify downloads using the provenance instructions at the tag.
+
 # Price-Time Matching Core
 
 A small C#/.NET 10 library and offline CLI for **one synthetic instrument**. Submit limit orders and cancels, inspect ordered synthetic trades, and reproduce the resulting book from the same ordered input.
