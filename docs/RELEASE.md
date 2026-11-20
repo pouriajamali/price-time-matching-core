@@ -1,3 +1,7 @@
+# 2026-11-20 - Current LTS servicing and local validation
+
+Technology selection retains SDK 10.0.404/runtime 10.0.15/C# 14/xUnit 4.0.3, already current in preview.2. The new source-bound local verification route keeps the original matching/CLI/locks/fixtures/oracle and resource/trust guards. See [technology selection](TECHNOLOGY-20261120.md). CI is NOT_RUN per owner instruction. No changed application/runtime distributable or replacement preview.2 release is claimed.
+
 # v0.1.0-preview.2 - Finite capacity and atomic rejection evidence
 
 A public MIT prerelease for one synthetic instrument: deterministic price-time FIFO, resting-price trades, limit/cancel commands and rejection without ledger, sequence or trade-output effects. Twelve manually specified small-limit histories check capacity rejection/retry, full-book fills, slot reuse, lifetime IDs after fill/cancel and FIFO through rejection. Matching algorithms, CLI, matching-v1 semantics, default limits and wire framing are unchanged.
