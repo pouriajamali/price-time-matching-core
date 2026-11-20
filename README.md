@@ -71,7 +71,7 @@ One caller owns an instance; it is not thread-safe. Replace, market orders, self
 
 ## Build and review
 
-Pinned SDK 10.0.403, runtime 10.0.14, C# 14; application uses BCL only. xUnit v3 4.0.3 is test-only. No preview, unsafe code, AOT, services, credentials or package install is needed for the self-contained CLI.
+The current [v0.1.0-preview.2 source](https://github.com/pouriajamali/price-time-matching-core/tree/90ecf0d07b8486bd208ba2498ba6933d75fbcdbd) pins SDK 10.0.404, runtime 10.0.15 and C# 14, matching the accepted Windows/Linux package manifests. Build that exact release source with the commands below. The older implementation retained on this default branch still pins SDK 10.0.403/runtime 10.0.14; it is historical source, not the current release. The application uses BCL only. xUnit v3 4.0.3 is test-only. No preview, unsafe code, AOT, services, credentials or package install is needed for the self-contained CLI.
 
 ```sh
 dotnet restore PriceTimeMatching.slnx --locked-mode
